@@ -1,0 +1,15 @@
+[Unit]
+Description=Home-lab Monitor collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Dev_Projects/homelab-plasma-monitor
+EnvironmentFile=-%h/Dev_Projects/homelab-plasma-monitor/.env
+ExecStart=%h/Dev_Projects/homelab-plasma-monitor/.venv/bin/homelab-monitor --config %h/Dev_Projects/homelab-plasma-monitor/config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

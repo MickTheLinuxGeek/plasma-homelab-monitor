@@ -1,0 +1,37 @@
+demo: true
+request_timeout_seconds: 3
+
+hosts:
+  - id: dxp2800
+    name: DXP2800
+    dashboard_url: https://openmediavault.example.test
+    probe:
+      type: http
+      url: https://openmediavault.example.test
+  - id: dxp4800p
+    name: DXP4800 Plus
+    dashboard_url: https://forgejo.example.test
+    probe:
+      type: tcp
+      host: 192.0.2.20
+      port: 22
+  - id: jellyfin
+    name: Jellyfin Host
+    dashboard_url: https://jellyfin.example.test
+    probe:
+      type: http
+      url: https://jellyfin.example.test/health
+
+portainer:
+  enabled: false
+  url: https://portainer.example.test
+  api_key_env: PORTAINER_API_KEY
+  verify_tls: true
+  # Leave empty to include every environment visible to the API token.
+  endpoint_ids: []
+
+jellyfin:
+  enabled: false
+  url: https://jellyfin.example.test
+  api_key_env: JELLYFIN_API_KEY
+  verify_tls: true

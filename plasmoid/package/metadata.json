@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Michael Biel"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Monitor home-lab hosts, Docker services, and Jellyfin",
+        "Icon": "server-database",
+        "Id": "org.mickgeeklabs.homelabmonitor",
+        "License": "MIT",
+        "Name": "Home-lab Monitor",
+        "Version": "0.1.0",
+        "Website": "https://github.com/MickTheLinuxGeek"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
