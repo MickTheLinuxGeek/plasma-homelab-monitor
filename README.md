@@ -154,4 +154,12 @@ make format
 make check
 ```
 
+## Known follow-up: local certificate trust
+
+Fedora command-line tools may trust home-lab certificates installed in the system CA store while Python HTTPX rejects the same certificates. HTTPX uses the bundled `certifi` CA store by default, which does not automatically include a private or locally generated certificate authority.
+
+The Forgejo probe currently works around this by setting `verify_tls: false` in the local `config.yaml`. A future improvement should allow a custom CA bundle path—either as a supported `verify_tls` value or through a separate `ca_bundle` setting—so HTTPX can verify home-lab certificates without disabling TLS verification.
+
+When implementing this, configure HTTPX with the PEM file for the home-lab CA rather than an individual server certificate, then return the Forgejo probe to verified TLS.
+
 The collector binds to `127.0.0.1` by default. If it is later moved to a home-lab server, place it behind authenticated HTTPS or restrict access at the network layer before changing the listen address.
