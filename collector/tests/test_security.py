@@ -54,6 +54,9 @@ def test_local_ca_https_probe_verifies_successfully(tmp_path: Path) -> None:
         thread.join(timeout=1)
 
     assert result.status == Status.HEALTHY
+    assert result.certificate_expires_at is not None
+    assert result.certificate_days_remaining is not None
+    assert result.certificate_days_remaining > 0
 
 
 def test_config_resolves_relative_ca_bundle(tmp_path: Path) -> None:

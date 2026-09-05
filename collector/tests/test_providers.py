@@ -39,6 +39,22 @@ def test_portainer_normalizes_environments_and_containers() -> None:
                     },
                 ],
             )
+        if "/containers/" in request.url.path:
+            container_id = request.url.path.rsplit("/", 2)[-2]
+            exited = container_id == "def"
+            return httpx.Response(
+                200,
+                json={
+                    "RestartCount": 0,
+                    "State": {
+                        "Status": "exited" if exited else "running",
+                        "Restarting": False,
+                        "OOMKilled": False,
+                        "ExitCode": 1 if exited else 0,
+                    },
+                    "Config": {"Labels": {}},
+                },
+            )
         return httpx.Response(404)
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
