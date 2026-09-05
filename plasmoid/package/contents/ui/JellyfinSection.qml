@@ -11,6 +11,7 @@ ColumnLayout {
     required property var jellyfin
     required property bool expanded
     required property bool issuesOnly
+    required property var formatAge
     signal expansionRequested(bool value)
 
     readonly property int issueCount: root.jellyfin.status !== "healthy"
@@ -35,9 +36,13 @@ ColumnLayout {
         visible: root.expanded && (!root.issuesOnly || root.issueCount > 0)
         name: root.jellyfin.server_name || i18n("Jellyfin server")
         status: root.jellyfin.status
-        detail: root.jellyfin.version
-            ? i18n("Version %1", root.jellyfin.version)
-            : ""
+        detail: (root.jellyfin.version
+                ? i18n("Version %1", root.jellyfin.version)
+                : "")
+            + (root.jellyfin.last_success_at
+                ? i18n(" · last success %1",
+                    root.formatAge(root.jellyfin.last_success_at))
+                : "")
         actionUrl: root.jellyfin.dashboard_url || ""
         actionLabel: i18n("Open Jellyfin")
     }
@@ -47,7 +52,10 @@ ColumnLayout {
         Layout.rightMargin: Kirigami.Units.smallSpacing
         visible: root.expanded && root.jellyfin.error
         providerName: i18n("Jellyfin")
-        errorMessage: root.jellyfin.error || ""
+        providerError: root.jellyfin.error
+        lastSuccessAge: root.jellyfin.last_success_at
+            ? root.formatAge(root.jellyfin.last_success_at)
+            : ""
     }
 
     PlasmaComponents3.Label {

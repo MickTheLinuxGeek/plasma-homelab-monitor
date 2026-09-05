@@ -35,11 +35,15 @@ PlasmoidItem {
         && ((dashboard.errors && dashboard.errors.length > 0)
             || !!dashboard.docker.error
             || !!dashboard.jellyfin.error)
+    readonly property bool providerDataStale: dashboard
+        && (dashboard.hosts.some(host => host.freshness === "stale")
+            || dashboard.docker.freshness === "stale"
+            || dashboard.jellyfin.freshness === "stale")
     readonly property string dataFreshness: {
         if (!dashboard) {
             return requestInFlight ? "loading" : "empty";
         }
-        return transportState === "unavailable" ? "stale" : "fresh";
+        return transportState === "unavailable" || providerDataStale ? "stale" : "fresh";
     }
     readonly property string viewState: {
         if (requestInFlight) {
@@ -47,6 +51,9 @@ PlasmoidItem {
         }
         if (transportState === "unavailable") {
             return dashboard ? "stale" : "collector-unavailable";
+        }
+        if (providerDataStale) {
+            return "partial-failure";
         }
         if (dashboardEmpty) {
             return "empty";
@@ -144,6 +151,59 @@ PlasmoidItem {
         return Plasmoid.configuration.collectorUrl.replace(/\/+$/, "") + path;
     }
 
+    function validProviderState(provider) {
+        return provider
+            && ["fresh", "stale", "unknown"].includes(provider.freshness)
+            && typeof provider.consecutive_failure_count === "number"
+            && provider.hasOwnProperty("observed_at")
+            && provider.hasOwnProperty("last_success_at")
+            && provider.hasOwnProperty("probe_duration_ms")
+            && provider.hasOwnProperty("error")
+            && (!provider.error
+                || (typeof provider.error.category === "string"
+                    && typeof provider.error.message === "string"));
+    }
+
+    function validStatus(status) {
+        return ["healthy", "degraded", "unavailable", "unknown"].includes(status);
+    }
+
+    function validDashboardPayload(payload) {
+        if (!payload
+                || payload.schema_version !== "2"
+                || !payload.summary
+                || !Array.isArray(payload.hosts)
+                || !payload.docker
+                || !payload.jellyfin
+                || !Array.isArray(payload.docker.environments)
+                || !Array.isArray(payload.jellyfin.active_sessions)
+                || !Array.isArray(payload.errors)) {
+            return false;
+        }
+        for (const countName of ["healthy", "degraded", "unavailable", "unknown"]) {
+            if (typeof payload.summary[countName] !== "number") {
+                return false;
+            }
+        }
+        if (!root.validStatus(payload.overall_status)
+                || !root.validProviderState(payload.docker)
+                || !root.validProviderState(payload.jellyfin)
+                || !payload.hosts.every(host =>
+                    root.validProviderState(host)
+                    && typeof host.id === "string"
+                    && typeof host.name === "string"
+                    && root.validStatus(host.status))
+                || !payload.docker.environments.every(environment =>
+                    Array.isArray(environment.containers)
+                    && root.validStatus(environment.status)
+                    && environment.containers.every(container =>
+                        typeof container.name === "string"
+                        && root.validStatus(container.status)))) {
+            return false;
+        }
+        return true;
+    }
+
     function scheduleRegularPoll() {
         pollTimer.interval = Math.max(5, Plasmoid.configuration.refreshInterval) * 1000;
         pollTimer.restart();
@@ -180,7 +240,9 @@ PlasmoidItem {
         root.failureCategory = "";
         root.failureMessage = "";
         root.lastSuccessfulConnectionAt = new Date().toISOString();
-        root.lastUpdatedAt = payload.generated_at || root.lastSuccessfulConnectionAt;
+        root.lastUpdatedAt = payload.last_successful_observation_at
+            || payload.generated_at
+            || root.lastSuccessfulConnectionAt;
         root.retryAttempt = 0;
         root.scheduleRegularPoll();
     }
@@ -209,11 +271,8 @@ PlasmoidItem {
 
             try {
                 const payload = JSON.parse(request.responseText);
-                if (payload.schema_version !== "1") {
-                    throw new Error(i18n("Unsupported collector schema"));
-                }
-                if (!payload.summary || !payload.hosts || !payload.docker || !payload.jellyfin) {
-                    throw new Error(i18n("Required dashboard fields are missing"));
+                if (!root.validDashboardPayload(payload)) {
+                    throw new Error(i18n("Dashboard response does not match API version 2"));
                 }
                 root.completeSuccess(request, payload);
             } catch (error) {
@@ -223,7 +282,7 @@ PlasmoidItem {
                     i18n("Invalid collector response: %1", error.message));
             }
         };
-        request.open("GET", root.endpoint("/api/v1/dashboard"));
+        request.open("GET", root.endpoint("/api/v2/dashboard"));
         request.timeout = Math.min(
             30000,
             Math.max(5000, Plasmoid.configuration.refreshInterval * 500));
@@ -264,6 +323,7 @@ PlasmoidItem {
         dockerExpanded: Plasmoid.configuration.dockerExpanded
         jellyfinExpanded: Plasmoid.configuration.jellyfinExpanded
         sortMode: Plasmoid.configuration.sortMode
+        formatAge: root.humanAge
         onRefreshRequested: root.refresh()
         onIssuesOnlyChangedByUser: value => root.issuesOnly = value
         onHostsExpandedChangedByUser: value => Plasmoid.configuration.hostsExpanded = value

@@ -7,12 +7,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-API_VERSION = "1"
-COLLECTOR_VERSION = "0.2.0"
+LEGACY_API_VERSION = "1"
+API_VERSION = "2"
+COLLECTOR_VERSION = "0.3.0"
 
 
 def utc_timestamp() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 class Status(StrEnum):
@@ -20,6 +21,28 @@ class Status(StrEnum):
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
     UNKNOWN = "unknown"
+
+
+class Freshness(StrEnum):
+    FRESH = "fresh"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
+class ErrorCategory(StrEnum):
+    TIMEOUT = "timeout"
+    TLS = "tls"
+    AUTHENTICATION = "authentication"
+    DNS = "dns"
+    CONNECTION = "connection"
+    MALFORMED_RESPONSE = "malformed_response"
+    UNEXPECTED = "unexpected"
+
+
+@dataclass(slots=True)
+class ProviderError:
+    category: ErrorCategory
+    message: str
 
 
 @dataclass(slots=True)
@@ -30,12 +53,12 @@ class HostStatus:
     detail: str
     dashboard_url: str | None = None
     latency_ms: int | None = None
-    observed_at: str = field(default_factory=utc_timestamp)
+    observed_at: str | None = None
     last_success_at: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.last_success_at is None and self.status != Status.UNAVAILABLE:
-            self.last_success_at = self.observed_at
+    consecutive_failure_count: int = 0
+    probe_duration_ms: int | None = None
+    freshness: Freshness = Freshness.UNKNOWN
+    error: ProviderError | None = None
 
 
 @dataclass(slots=True)
@@ -63,13 +86,12 @@ class DockerEnvironment:
 class DockerStatus:
     status: Status = Status.UNKNOWN
     environments: list[DockerEnvironment] = field(default_factory=list)
-    error: str | None = None
-    observed_at: str = field(default_factory=utc_timestamp)
+    error: ProviderError | None = None
+    observed_at: str | None = None
     last_success_at: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.last_success_at is None and not self.error and self.status != Status.UNKNOWN:
-            self.last_success_at = self.observed_at
+    consecutive_failure_count: int = 0
+    probe_duration_ms: int | None = None
+    freshness: Freshness = Freshness.UNKNOWN
 
 
 @dataclass(slots=True)
@@ -87,18 +109,18 @@ class JellyfinStatus:
     version: str = ""
     active_sessions: list[JellyfinSession] = field(default_factory=list)
     dashboard_url: str | None = None
-    error: str | None = None
-    observed_at: str = field(default_factory=utc_timestamp)
+    error: ProviderError | None = None
+    observed_at: str | None = None
     last_success_at: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.last_success_at is None and not self.error and self.status != Status.UNKNOWN:
-            self.last_success_at = self.observed_at
+    consecutive_failure_count: int = 0
+    probe_duration_ms: int | None = None
+    freshness: Freshness = Freshness.UNKNOWN
 
 
 @dataclass(slots=True)
 class SourceError:
     source: str
+    category: ErrorCategory
     message: str
     observed_at: str = field(default_factory=utc_timestamp)
 
@@ -146,4 +168,29 @@ class Dashboard:
         payload["last_successful_observation_at"] = (
             max(successful_observations) if successful_observations else None
         )
+        return payload
+
+    def to_v1_dict(self) -> dict[str, Any]:
+        """Return the pre-v0.3 response shape for existing v1 clients."""
+        payload = self.to_dict()
+        payload["schema_version"] = LEGACY_API_VERSION
+        payload["api_version"] = LEGACY_API_VERSION
+        provider_state_fields = {
+            "consecutive_failure_count",
+            "probe_duration_ms",
+            "freshness",
+        }
+        for host in payload["hosts"]:
+            host.pop("error", None)
+            for field_name in provider_state_fields:
+                host.pop(field_name, None)
+        for provider_name in ("docker", "jellyfin"):
+            provider = payload[provider_name]
+            error = provider.get("error")
+            provider["error"] = error["message"] if error else None
+            for field_name in provider_state_fields:
+                provider.pop(field_name, None)
+        payload["errors"] = [
+            {"source": item["source"], "message": item["message"]} for item in payload["errors"]
+        ]
         return payload

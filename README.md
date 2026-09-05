@@ -27,11 +27,13 @@ make run
 The example configuration starts in demo mode. In another terminal:
 
 ```bash
-curl http://127.0.0.1:8765/api/v1/dashboard
+curl http://127.0.0.1:8765/api/v2/dashboard
 make preview
 ```
 
-The widget defaults to `http://127.0.0.1:8765` and refreshes every 30 seconds. Both values can be changed from the widget's settings.
+The widget defaults to `http://127.0.0.1:8765` and refreshes every 30 seconds. Both values can be changed from the widget's settings. Provider probes run independently in the collector; dashboard HTTP requests return the latest cached snapshot immediately.
+
+The current contract is available at `/api/v2/dashboard`, with its JSON Schema at `/api/v2/schema`. `/api/v1/dashboard` remains available for v0.2 widget compatibility.
 
 ## Configure live integrations
 
@@ -154,12 +156,20 @@ make format
 make check
 ```
 
-## Known follow-up: local certificate trust
+## Local certificate trust
 
-Fedora command-line tools may trust home-lab certificates installed in the system CA store while Python HTTPX rejects the same certificates. HTTPX uses the bundled `certifi` CA store by default, which does not automatically include a private or locally generated certificate authority.
+Fedora command-line tools may trust home-lab certificates installed in the system CA store while Python HTTPX uses a different trust store. Configure `ca_bundle` for each HTTPS host probe or provider that uses a private CA:
 
-The Forgejo probe currently works around this by setting `verify_tls: false` in the local `config.yaml`. A future improvement should allow a custom CA bundle path—either as a supported `verify_tls` value or through a separate `ca_bundle` setting—so HTTPX can verify home-lab certificates without disabling TLS verification.
+```yaml
+probe:
+  type: http
+  url: https://forgejo.home.arpa
+  verify_tls: true
+  ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
+```
 
-When implementing this, configure HTTPX with the PEM file for the home-lab CA rather than an individual server certificate, then return the Forgejo probe to verified TLS.
+Use the PEM certificate for the home-lab CA rather than an individual server certificate. Disabling verification requires both `verify_tls: false` and `allow_insecure_tls: true` as an explicit temporary exception.
 
-The collector binds to `127.0.0.1` by default. If it is later moved to a home-lab server, place it behind authenticated HTTPS or restrict access at the network layer before changing the listen address.
+The collector binds to `127.0.0.1` by default and rejects non-loopback bind addresses. Remote access will remain disabled until authenticated HTTPS or mutual TLS is implemented.
+
+Keep `.env` mode `0600`; the collector refuses to start when the adjacent environment file is accessible to group or other users. Provider exception details are written only to collector logs. API responses contain sanitized error categories and messages.

@@ -6,12 +6,26 @@ Kirigami.InlineMessage {
     id: root
 
     required property string providerName
-    required property string errorMessage
+    required property var providerError
+    property string lastSuccessAge: ""
 
     Layout.fillWidth: true
-    visible: root.errorMessage.length > 0
+    visible: !!root.providerError
     type: Kirigami.MessageType.Error
-    text: i18n("%1: %2", root.providerName, root.errorMessage)
+    text: root.providerError
+        ? (root.lastSuccessAge
+            ? i18n("%1: %2 Last successful observation was %3.",
+                root.providerName,
+                root.providerError.message,
+                root.lastSuccessAge)
+            : i18n("%1: %2 No successful observation is available.",
+                root.providerName,
+                root.providerError.message))
+        : ""
     Accessible.name: i18n("%1 provider error", root.providerName)
-    Accessible.description: root.errorMessage
+    Accessible.description: root.providerError
+        ? i18n("Category: %1. %2",
+            root.providerError.category,
+            root.providerError.message)
+        : ""
 }

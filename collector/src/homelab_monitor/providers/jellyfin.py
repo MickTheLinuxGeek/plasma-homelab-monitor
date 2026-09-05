@@ -6,7 +6,9 @@ from typing import Any
 
 import httpx
 
+from homelab_monitor.errors import MalformedResponseError
 from homelab_monitor.models import JellyfinSession, JellyfinStatus, Status
+from homelab_monitor.tls import tls_verification
 
 
 class JellyfinClient:
@@ -21,7 +23,7 @@ class JellyfinClient:
         self._owns_client = client is None
         self.client = client or httpx.Client(
             timeout=timeout,
-            verify=bool(config.get("verify_tls", True)),
+            verify=tls_verification(config),
             headers={"X-Emby-Token": str(config["api_key"])},
         )
 
@@ -38,11 +40,17 @@ class JellyfinClient:
         try:
             system = self._get("/System/Info")
             raw_sessions = self._get("/Sessions")
+            if not isinstance(system, dict) or not isinstance(raw_sessions, list):
+                raise MalformedResponseError("Jellyfin response shape is invalid")
             sessions = []
             for session in raw_sessions:
+                if not isinstance(session, dict):
+                    raise MalformedResponseError("Jellyfin session entry must be an object")
                 now_playing = session.get("NowPlayingItem")
                 if not now_playing:
                     continue
+                if not isinstance(now_playing, dict):
+                    raise MalformedResponseError("Jellyfin NowPlayingItem must be an object")
                 sessions.append(
                     JellyfinSession(
                         user_name=str(session.get("UserName") or "Unknown user"),
@@ -57,12 +65,6 @@ class JellyfinClient:
                 version=str(system.get("Version") or ""),
                 active_sessions=sessions,
                 dashboard_url=self.base_url,
-            )
-        except (TypeError, ValueError, httpx.HTTPError) as exc:
-            return JellyfinStatus(
-                status=Status.UNAVAILABLE,
-                dashboard_url=self.base_url,
-                error=str(exc),
             )
         finally:
             self.close()

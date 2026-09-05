@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.plasma.components as PlasmaComponents3
 
 ColumnLayout {
     id: root
@@ -11,6 +12,7 @@ ColumnLayout {
     required property bool expanded
     required property bool issuesOnly
     required property string sortMode
+    required property var formatAge
     signal expansionRequested(bool value)
 
     readonly property var environments: root.filteredEnvironments()
@@ -30,6 +32,17 @@ ColumnLayout {
             return 2;
         default:
             return 3;
+        }
+    }
+
+    function freshnessLabel(freshness) {
+        switch (freshness) {
+        case "fresh":
+            return i18n("Fresh");
+        case "stale":
+            return i18n("Stale");
+        default:
+            return i18n("Freshness unknown");
         }
     }
 
@@ -101,12 +114,31 @@ ColumnLayout {
         onToggledByUser: root.expansionRequested(!root.expanded)
     }
 
+    PlasmaComponents3.Label {
+        Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.smallSpacing
+        visible: root.expanded
+        text: root.docker.last_success_at
+            ? i18n("%1 · last success %2",
+                root.freshnessLabel(root.docker.freshness),
+                root.formatAge(root.docker.last_success_at))
+            : i18n("%1 · no successful observation",
+                root.freshnessLabel(root.docker.freshness))
+        opacity: 0.75
+        font: Kirigami.Theme.smallFont
+        wrapMode: Text.Wrap
+    }
+
     ProviderError {
         Layout.leftMargin: Kirigami.Units.largeSpacing
         Layout.rightMargin: Kirigami.Units.smallSpacing
         visible: root.expanded && root.docker.error
         providerName: i18n("Docker")
-        errorMessage: root.docker.error || ""
+        providerError: root.docker.error
+        lastSuccessAge: root.docker.last_success_at
+            ? root.formatAge(root.docker.last_success_at)
+            : ""
     }
 
     Repeater {
@@ -127,6 +159,10 @@ ColumnLayout {
                 detail: i18n("%1 of %2 containers running",
                     environmentColumn.modelData.running,
                     environmentColumn.modelData.total)
+                    + (root.docker.last_success_at
+                        ? i18n(" · last success %1",
+                            root.formatAge(root.docker.last_success_at))
+                        : "")
             }
 
             Repeater {

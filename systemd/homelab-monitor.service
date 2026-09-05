@@ -10,6 +10,9 @@ EnvironmentFile=-%h/Dev_Projects/homelab-plasma-monitor/.env
 ExecStart=%h/Dev_Projects/homelab-plasma-monitor/.venv/bin/homelab-monitor --config %h/Dev_Projects/homelab-plasma-monitor/config.yaml
 Restart=on-failure
 RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=default.target

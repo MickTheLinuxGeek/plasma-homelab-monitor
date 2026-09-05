@@ -1,4 +1,4 @@
-from homelab_monitor.models import Dashboard, HostStatus, Status
+from homelab_monitor.models import Dashboard, Freshness, HostStatus, Status
 
 
 def test_overall_status_is_healthy_when_every_source_is_healthy() -> None:
@@ -19,7 +19,15 @@ def test_overall_status_is_healthy_when_every_source_is_healthy() -> None:
 def test_mixed_host_statuses_degrade_dashboard() -> None:
     dashboard = Dashboard(
         hosts=[
-            HostStatus("one", "One", Status.HEALTHY, "Online"),
+            HostStatus(
+                "one",
+                "One",
+                Status.HEALTHY,
+                "Online",
+                observed_at="2026-01-01T00:00:00+00:00",
+                last_success_at="2026-01-01T00:00:00+00:00",
+                freshness=Freshness.FRESH,
+            ),
             HostStatus("two", "Two", Status.UNAVAILABLE, "Offline"),
         ]
     )
@@ -32,4 +40,4 @@ def test_mixed_host_statuses_degrade_dashboard() -> None:
     assert payload["hosts"][0]["observed_at"]
     assert payload["hosts"][0]["last_success_at"]
     assert payload["hosts"][1]["last_success_at"] is None
-    assert payload["last_successful_observation_at"] == payload["hosts"][0]["observed_at"]
+    assert payload["last_successful_observation_at"] == "2026-01-01T00:00:00+00:00"

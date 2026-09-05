@@ -166,7 +166,7 @@ ColumnLayout {
                     root.lastUpdatedAge);
             }
             if (root.viewState === "partial-failure") {
-                return i18n("The collector responded, but one or more providers failed.");
+                return i18n("The collector responded, but one or more providers failed or are stale.");
             }
             return root.failureMessage;
         }
