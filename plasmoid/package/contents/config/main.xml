@@ -8,5 +8,29 @@
         <entry name="refreshInterval" type="Int">
             <default>30</default>
         </entry>
+        <entry name="showHosts" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="showDocker" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="showJellyfin" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="hostsExpanded" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="dockerExpanded" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="jellyfinExpanded" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="sortMode" type="String">
+            <default>status</default>
+        </entry>
+        <entry name="issuesOnlyByDefault" type="Bool">
+            <default>false</default>
+        </entry>
     </group>
 </kcfg>

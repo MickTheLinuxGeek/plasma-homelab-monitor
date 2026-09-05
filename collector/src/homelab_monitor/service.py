@@ -12,6 +12,7 @@ from homelab_monitor.models import (
     JellyfinStatus,
     SourceError,
     Status,
+    utc_timestamp,
 )
 from homelab_monitor.providers import JellyfinClient, PortainerClient, probe_host
 
@@ -23,7 +24,9 @@ class DashboardService:
 
     def collect(self) -> Dashboard:
         if self.config.get("demo"):
-            return build_demo_dashboard()
+            dashboard = build_demo_dashboard()
+            dashboard.generated_at = utc_timestamp()
+            return dashboard
 
         dashboard = Dashboard()
         futures: dict[Any, tuple[str, str | None]] = {}
@@ -79,4 +82,5 @@ class DashboardService:
             dashboard.docker = DockerStatus(status=Status.UNKNOWN)
         if not self.config["jellyfin"].get("enabled"):
             dashboard.jellyfin = JellyfinStatus(status=Status.UNKNOWN)
+        dashboard.generated_at = utc_timestamp()
         return dashboard

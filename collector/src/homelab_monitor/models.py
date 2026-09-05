@@ -7,6 +7,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+API_VERSION = "1"
+COLLECTOR_VERSION = "0.2.0"
+
+
+def utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
 
 class Status(StrEnum):
     HEALTHY = "healthy"
@@ -23,6 +30,12 @@ class HostStatus:
     detail: str
     dashboard_url: str | None = None
     latency_ms: int | None = None
+    observed_at: str = field(default_factory=utc_timestamp)
+    last_success_at: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.last_success_at is None and self.status != Status.UNAVAILABLE:
+            self.last_success_at = self.observed_at
 
 
 @dataclass(slots=True)
@@ -51,6 +64,12 @@ class DockerStatus:
     status: Status = Status.UNKNOWN
     environments: list[DockerEnvironment] = field(default_factory=list)
     error: str | None = None
+    observed_at: str = field(default_factory=utc_timestamp)
+    last_success_at: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.last_success_at is None and not self.error and self.status != Status.UNKNOWN:
+            self.last_success_at = self.observed_at
 
 
 @dataclass(slots=True)
@@ -69,12 +88,19 @@ class JellyfinStatus:
     active_sessions: list[JellyfinSession] = field(default_factory=list)
     dashboard_url: str | None = None
     error: str | None = None
+    observed_at: str = field(default_factory=utc_timestamp)
+    last_success_at: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.last_success_at is None and not self.error and self.status != Status.UNKNOWN:
+            self.last_success_at = self.observed_at
 
 
 @dataclass(slots=True)
 class SourceError:
     source: str
     message: str
+    observed_at: str = field(default_factory=utc_timestamp)
 
 
 @dataclass(slots=True)
@@ -83,10 +109,10 @@ class Dashboard:
     docker: DockerStatus = field(default_factory=DockerStatus)
     jellyfin: JellyfinStatus = field(default_factory=JellyfinStatus)
     errors: list[SourceError] = field(default_factory=list)
-    schema_version: str = "1"
-    generated_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds")
-    )
+    schema_version: str = API_VERSION
+    api_version: str = API_VERSION
+    collector_version: str = COLLECTOR_VERSION
+    generated_at: str = field(default_factory=utc_timestamp)
 
     def overall_status(self) -> Status:
         statuses = [host.status for host in self.hosts]
@@ -112,4 +138,12 @@ class Dashboard:
             if provider_status != Status.UNKNOWN:
                 counts[provider_status.value] += 1
         payload["summary"] = counts
+        successful_observations = [
+            item.last_success_at
+            for item in [*self.hosts, self.docker, self.jellyfin]
+            if item.last_success_at
+        ]
+        payload["last_successful_observation_at"] = (
+            max(successful_observations) if successful_observations else None
+        )
         return payload
