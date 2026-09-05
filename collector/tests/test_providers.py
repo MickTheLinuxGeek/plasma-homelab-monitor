@@ -1,18 +1,18 @@
 import httpx
+import pytest
+from homelab_monitor.errors import MalformedResponseError
 from homelab_monitor.models import Status
 from homelab_monitor.providers.hosts import probe_host
 from homelab_monitor.providers.jellyfin import JellyfinClient
 from homelab_monitor.providers.portainer import PortainerClient
 
 
-def test_invalid_host_probe_is_reported_as_unavailable() -> None:
-    result = probe_host(
-        {"id": "nas", "name": "NAS", "probe": {"type": "unsupported"}},
-        timeout=0.1,
-    )
-
-    assert result.status == Status.UNAVAILABLE
-    assert "probe.type" in result.detail
+def test_invalid_host_probe_is_rejected() -> None:
+    with pytest.raises(ValueError, match="probe.type"):
+        probe_host(
+            {"id": "nas", "name": "NAS", "probe": {"type": "unsupported"}},
+            timeout=0.1,
+        )
 
 
 def test_portainer_normalizes_environments_and_containers() -> None:
@@ -93,3 +93,20 @@ def test_jellyfin_only_returns_active_playback_sessions() -> None:
     assert result.server_name == "Media"
     assert len(result.active_sessions) == 1
     assert result.active_sessions[0].item_name == "A Movie"
+
+
+def test_portainer_rejects_malformed_endpoint_response() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"not": "a list"}))
+    )
+
+    with pytest.raises(MalformedResponseError):
+        PortainerClient(
+            {
+                "url": "https://portainer.example.test",
+                "api_key": "test",
+                "verify_tls": True,
+            },
+            timeout=1,
+            client=client,
+        ).collect()

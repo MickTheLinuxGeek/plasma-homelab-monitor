@@ -58,22 +58,24 @@ def test_kconfig_xml_is_well_formed() -> None:
 def test_qml_models_transport_freshness_and_bounded_retry_independently() -> None:
     main_qml = (PACKAGE / "contents/ui/main.qml").read_text(encoding="utf-8")
 
-    assert 'property bool requestInFlight: false' in main_qml
+    assert "property bool requestInFlight: false" in main_qml
     assert 'property string transportState: "unknown"' in main_qml
-    assert 'readonly property string dataFreshness:' in main_qml
-    assert 'readonly property string dashboardHealth:' in main_qml
-    assert 'readonly property string compactStatus:' in main_qml
+    assert "readonly property string dataFreshness:" in main_qml
+    assert "readonly property string dashboardHealth:" in main_qml
+    assert "readonly property string compactStatus:" in main_qml
     assert "if (root.requestInFlight)" in main_qml
     assert "Math.min(root.maximumRetryDelay" in main_qml
     assert 'root.transportState = "unavailable"' in main_qml
     assert "root.dashboard = payload" in main_qml
     assert "root.retryAttempt = 0" in main_qml
+    assert 'root.endpoint("/api/v2/dashboard")' in main_qml
+    assert "validProviderState" in main_qml
+    assert "validDashboardPayload" in main_qml
+    assert "payload.last_successful_observation_at" in main_qml
 
 
 def test_qml_exposes_accessible_non_color_status_and_controls() -> None:
-    compact_qml = (PACKAGE / "contents/ui/CompactRepresentation.qml").read_text(
-        encoding="utf-8"
-    )
+    compact_qml = (PACKAGE / "contents/ui/CompactRepresentation.qml").read_text(encoding="utf-8")
     status_qml = (PACKAGE / "contents/ui/StatusIndicator.qml").read_text(encoding="utf-8")
     section_qml = (PACKAGE / "contents/ui/SectionHeader.qml").read_text(encoding="utf-8")
     resource_qml = (PACKAGE / "contents/ui/ResourceRow.qml").read_text(encoding="utf-8")

@@ -6,12 +6,14 @@ from typing import Any
 
 import httpx
 
+from homelab_monitor.errors import MalformedResponseError
 from homelab_monitor.models import (
     ContainerStatus,
     DockerEnvironment,
     DockerStatus,
     Status,
 )
+from homelab_monitor.tls import tls_verification
 
 
 class PortainerClient:
@@ -27,7 +29,7 @@ class PortainerClient:
         self._owns_client = client is None
         self.client = client or httpx.Client(
             timeout=timeout,
-            verify=bool(config.get("verify_tls", True)),
+            verify=tls_verification(config),
             headers={"X-API-Key": str(config["api_key"])},
         )
 
@@ -42,6 +44,8 @@ class PortainerClient:
 
     @staticmethod
     def _container(item: dict[str, Any]) -> ContainerStatus:
+        if not isinstance(item, dict):
+            raise MalformedResponseError("Portainer container entry must be an object")
         state = str(item.get("State", "unknown")).lower()
         detail = str(item.get("Status", state.title()))
         healthy = state == "running" and "(unhealthy)" not in detail.lower()
@@ -64,8 +68,12 @@ class PortainerClient:
     def collect(self) -> DockerStatus:
         try:
             endpoints = self._get("/api/endpoints")
+            if not isinstance(endpoints, list):
+                raise MalformedResponseError("Portainer endpoints response must be a list")
             environments: list[DockerEnvironment] = []
             for endpoint in endpoints:
+                if not isinstance(endpoint, dict):
+                    raise MalformedResponseError("Portainer endpoint entry must be an object")
                 endpoint_id = int(endpoint["Id"])
                 if self.endpoint_ids and endpoint_id not in self.endpoint_ids:
                     continue
@@ -88,6 +96,8 @@ class PortainerClient:
                     f"/api/endpoints/{endpoint_id}/docker/containers/json",
                     all="true",
                 )
+                if not isinstance(raw_containers, list):
+                    raise MalformedResponseError("Portainer containers response must be a list")
                 containers = [self._container(item) for item in raw_containers]
                 running = sum(item.state == "running" for item in containers)
                 total = len(containers)
@@ -118,7 +128,5 @@ class PortainerClient:
             else:
                 overall = Status.DEGRADED
             return DockerStatus(status=overall, environments=environments)
-        except (KeyError, TypeError, ValueError, httpx.HTTPError) as exc:
-            return DockerStatus(status=Status.UNAVAILABLE, error=str(exc))
         finally:
             self.close()

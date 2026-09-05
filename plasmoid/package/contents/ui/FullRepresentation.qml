@@ -25,6 +25,7 @@ PlasmaExtras.Representation {
     required property bool dockerExpanded
     required property bool jellyfinExpanded
     required property string sortMode
+    required property var formatAge
 
     signal refreshRequested
     signal issuesOnlyChangedByUser(bool value)
@@ -156,6 +157,7 @@ PlasmaExtras.Representation {
                 expanded: root.effectiveHostsExpanded
                 issuesOnly: root.issuesOnly
                 sortMode: root.sortMode
+                formatAge: root.formatAge
                 onExpansionRequested: value => root.changeHostsExpansion(value)
             }
 
@@ -175,6 +177,7 @@ PlasmaExtras.Representation {
                 expanded: root.effectiveDockerExpanded
                 issuesOnly: root.issuesOnly
                 sortMode: root.sortMode
+                formatAge: root.formatAge
                 onExpansionRequested: value => root.changeDockerExpansion(value)
             }
 
@@ -196,6 +199,7 @@ PlasmaExtras.Representation {
                     })
                 expanded: root.effectiveJellyfinExpanded
                 issuesOnly: root.issuesOnly
+                formatAge: root.formatAge
                 onExpansionRequested: value => root.changeJellyfinExpansion(value)
             }
 

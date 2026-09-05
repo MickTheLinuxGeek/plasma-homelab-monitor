@@ -15,6 +15,11 @@ def test_loads_demo_config_without_tokens(tmp_path: Path) -> None:
 
     assert config["demo"] is True
     assert config["request_timeout_seconds"] == 3.0
+    assert config["poll_interval_seconds"] == 30.0
+    assert config["max_concurrent_probes"] == 4
+    assert config["retry_base_seconds"] == 2.0
+    assert config["retry_max_seconds"] == 30.0
+    assert config["freshness_grace_seconds"] == 5.0
 
 
 def test_enabled_provider_requires_environment_token(

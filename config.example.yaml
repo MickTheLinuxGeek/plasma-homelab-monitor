@@ -1,13 +1,23 @@
 demo: true
 request_timeout_seconds: 3
+poll_interval_seconds: 30
+max_concurrent_probes: 4
+retry_base_seconds: 2
+retry_max_seconds: 30
+freshness_grace_seconds: 5
 
 hosts:
   - id: dxp2800
     name: DXP2800
     dashboard_url: https://openmediavault.example.test
+    poll_interval_seconds: 30
+    timeout_seconds: 3
     probe:
       type: http
       url: https://openmediavault.example.test
+      verify_tls: true
+      # Use the PEM for the issuing CA, not an individual server certificate.
+      # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
   - id: dxp4800p
     name: DXP4800 Plus
     dashboard_url: https://forgejo.example.test
@@ -27,6 +37,9 @@ portainer:
   url: https://portainer.example.test
   api_key_env: PORTAINER_API_KEY
   verify_tls: true
+  # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
+  poll_interval_seconds: 30
+  timeout_seconds: 3
   # Leave empty to include every environment visible to the API token.
   endpoint_ids: []
 
@@ -35,3 +48,6 @@ jellyfin:
   url: https://jellyfin.example.test
   api_key_env: JELLYFIN_API_KEY
   verify_tls: true
+  # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
+  poll_interval_seconds: 30
+  timeout_seconds: 3

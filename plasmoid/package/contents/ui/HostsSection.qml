@@ -11,6 +11,7 @@ ColumnLayout {
     required property bool expanded
     required property bool issuesOnly
     required property string sortMode
+    required property var formatAge
     signal expansionRequested(bool value)
 
     readonly property int issueCount: root.countIssues()
@@ -79,10 +80,13 @@ ColumnLayout {
             Layout.rightMargin: Kirigami.Units.smallSpacing
             name: modelData.name
             status: modelData.status
-            detail: modelData.detail
+            detail: (modelData.error ? modelData.error.message : modelData.detail)
                 + (modelData.latency_ms !== null
                     ? i18n(" · %1 ms", modelData.latency_ms)
                     : "")
+                + (modelData.last_success_at
+                    ? i18n(" · last success %1", root.formatAge(modelData.last_success_at))
+                    : i18n(" · no successful observation"))
             actionUrl: modelData.dashboard_url || ""
         }
     }
