@@ -29,3 +29,7 @@ def test_mixed_host_statuses_degrade_dashboard() -> None:
     assert payload["overall_status"] == "degraded"
     assert payload["summary"]["healthy"] == 1
     assert payload["summary"]["unavailable"] == 1
+    assert payload["hosts"][0]["observed_at"]
+    assert payload["hosts"][0]["last_success_at"]
+    assert payload["hosts"][1]["last_success_at"] is None
+    assert payload["last_successful_observation_at"] == payload["hosts"][0]["observed_at"]

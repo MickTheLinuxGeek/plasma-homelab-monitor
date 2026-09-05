@@ -8,6 +8,7 @@ from typing import Any
 from flask import Flask, jsonify
 
 from homelab_monitor.config import load_config
+from homelab_monitor.models import API_VERSION, COLLECTOR_VERSION
 from homelab_monitor.service import DashboardService
 
 
@@ -21,7 +22,13 @@ def create_app(
 
     @app.get("/healthz")
     def health() -> Any:
-        return jsonify({"status": "ok"})
+        return jsonify(
+            {
+                "status": "ok",
+                "api_version": API_VERSION,
+                "collector_version": COLLECTOR_VERSION,
+            }
+        )
 
     @app.get("/api/v1/dashboard")
     def dashboard() -> Any:
