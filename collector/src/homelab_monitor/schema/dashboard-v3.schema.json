@@ -1,0 +1,870 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mickgeeklabs.local/homelab-monitor/dashboard-v3.schema.json",
+  "title": "Home-lab Monitor Dashboard API v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "api_version",
+    "collector_version",
+    "generated_at",
+    "last_successful_observation_at",
+    "overall_status",
+    "summary",
+    "hosts",
+    "docker",
+    "jellyfin",
+    "errors",
+    "recent_events",
+    "trends",
+    "features"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3"
+    },
+    "api_version": {
+      "const": "3"
+    },
+    "collector_version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_successful_observation_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "overall_status": {
+      "$ref": "#/$defs/status"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "healthy",
+        "degraded",
+        "unavailable",
+        "unknown"
+      ],
+      "properties": {
+        "healthy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "degraded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unavailable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "hosts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/host"
+      }
+    },
+    "docker": {
+      "$ref": "#/$defs/docker"
+    },
+    "jellyfin": {
+      "$ref": "#/$defs/jellyfin"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceError"
+      }
+    },
+    "recent_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timelineEvent"
+      }
+    },
+    "trends": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trendSeries"
+      }
+    },
+    "features": {
+      "$ref": "#/$defs/featureStatus"
+    }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "degraded",
+        "unavailable",
+        "unknown"
+      ]
+    },
+    "freshness": {
+      "type": "string",
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown"
+      ]
+    },
+    "errorCategory": {
+      "type": "string",
+      "enum": [
+        "timeout",
+        "tls",
+        "authentication",
+        "dns",
+        "connection",
+        "malformed_response",
+        "unexpected"
+      ]
+    },
+    "providerError": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "message"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/errorCategory"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "providerState": {
+      "type": "object",
+      "required": [
+        "observed_at",
+        "last_success_at",
+        "consecutive_failure_count",
+        "probe_duration_ms",
+        "freshness",
+        "error"
+      ],
+      "properties": {
+        "observed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "last_success_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "consecutive_failure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probe_duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "freshness": {
+          "$ref": "#/$defs/freshness"
+        },
+        "error": {
+          "$ref": "#/$defs/providerError"
+        }
+      }
+    },
+    "host": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/providerState"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "status",
+            "detail",
+            "dashboard_url",
+            "latency_ms",
+            "certificate_expires_at",
+            "certificate_days_remaining",
+            "metrics"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/status"
+            },
+            "detail": {
+              "type": "string"
+            },
+            "dashboard_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "latency_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "observed_at": {},
+            "last_success_at": {},
+            "consecutive_failure_count": {},
+            "probe_duration_ms": {},
+            "freshness": {},
+            "error": {},
+            "certificate_expires_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "certificate_days_remaining": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "metrics": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/hostMetrics"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "image",
+        "state",
+        "status",
+        "detail",
+        "health",
+        "health_failing_streak",
+        "restart_count",
+        "restarting",
+        "oom_killed",
+        "exit_code",
+        "started_at",
+        "finished_at",
+        "recent_exit",
+        "project"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "health": {
+          "type": "string",
+          "enum": [
+            "none",
+            "starting",
+            "healthy",
+            "unhealthy",
+            "unknown"
+          ]
+        },
+        "health_failing_streak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "restart_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "restarting": {
+          "type": "boolean"
+        },
+        "oom_killed": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "recent_exit": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "status",
+        "running",
+        "stopped",
+        "total",
+        "containers",
+        "host_id"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "running": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stopped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "containers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/container"
+          }
+        },
+        "host_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "docker": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/providerState"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "environments"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status"
+            },
+            "environments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/environment"
+              }
+            },
+            "observed_at": {},
+            "last_success_at": {},
+            "consecutive_failure_count": {},
+            "probe_duration_ms": {},
+            "freshness": {},
+            "error": {}
+          }
+        }
+      ]
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_name",
+        "client",
+        "device_name",
+        "item_name"
+      ],
+      "properties": {
+        "user_name": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "device_name": {
+          "type": "string"
+        },
+        "item_name": {
+          "type": "string"
+        }
+      }
+    },
+    "jellyfin": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/providerState"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "server_name",
+            "version",
+            "active_sessions",
+            "dashboard_url"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status"
+            },
+            "server_name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "active_sessions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/session"
+              }
+            },
+            "dashboard_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "observed_at": {},
+            "last_success_at": {},
+            "consecutive_failure_count": {},
+            "probe_duration_ms": {},
+            "freshness": {},
+            "error": {}
+          }
+        }
+      ]
+    },
+    "sourceError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "category",
+        "message",
+        "observed_at"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/errorCategory"
+        },
+        "message": {
+          "type": "string"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ]
+    },
+    "nullableStatus": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/status"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "thresholdDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direction",
+        "warning",
+        "critical",
+        "sustained_samples"
+      ],
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "above",
+            "below",
+            "categorical"
+          ]
+        },
+        "warning": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "critical": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sustained_samples": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "status",
+        "value",
+        "unit",
+        "detail",
+        "thresholds",
+        "observed_at",
+        "freshness"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        },
+        "thresholds": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/thresholdDefinition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "freshness": {
+          "$ref": "#/$defs/freshness"
+        }
+      }
+    },
+    "hostMetrics": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/providerState"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "measurements",
+            "boot_id"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/status"
+            },
+            "measurements": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/measurement"
+              }
+            },
+            "boot_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "observed_at": {},
+            "last_success_at": {},
+            "consecutive_failure_count": {},
+            "probe_duration_ms": {},
+            "freshness": {},
+            "error": {}
+          }
+        }
+      ]
+    },
+    "timelineEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "resource_id",
+        "resource_name",
+        "event_type",
+        "severity",
+        "message",
+        "occurred_at",
+        "previous_status",
+        "current_status",
+        "incident_id",
+        "parent_event_id",
+        "recovered_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "resource_name": {
+          "type": "string"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "message": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "previous_status": {
+          "$ref": "#/$defs/nullableStatus"
+        },
+        "current_status": {
+          "$ref": "#/$defs/nullableStatus"
+        },
+        "incident_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "parent_event_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "recovered_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "trendPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_at",
+        "status",
+        "value"
+      ],
+      "properties": {
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "trendSeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource_id",
+        "label",
+        "metric",
+        "unit",
+        "points"
+      ],
+      "properties": {
+        "resource_id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trendPoint"
+          }
+        }
+      }
+    },
+    "featureStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "history_enabled",
+        "history_available",
+        "history_retention_days",
+        "notifications_enabled"
+      ],
+      "properties": {
+        "history_enabled": {
+          "type": "boolean"
+        },
+        "history_available": {
+          "type": "boolean"
+        },
+        "history_retention_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "notifications_enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

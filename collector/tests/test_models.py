@@ -33,6 +33,7 @@ def test_mixed_host_statuses_degrade_dashboard() -> None:
     )
 
     payload = dashboard.to_dict()
+    v2_payload = dashboard.to_v2_dict()
 
     assert payload["overall_status"] == "degraded"
     assert payload["summary"]["healthy"] == 1
@@ -41,3 +42,7 @@ def test_mixed_host_statuses_degrade_dashboard() -> None:
     assert payload["hosts"][0]["last_success_at"]
     assert payload["hosts"][1]["last_success_at"] is None
     assert payload["last_successful_observation_at"] == "2026-01-01T00:00:00+00:00"
+    assert payload["schema_version"] == "3"
+    assert v2_payload["schema_version"] == "2"
+    assert "recent_events" not in v2_payload
+    assert "metrics" not in v2_payload["hosts"][0]

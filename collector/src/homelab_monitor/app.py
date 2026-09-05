@@ -40,11 +40,20 @@ def create_app(
 
     @app.get("/api/v2/dashboard")
     def dashboard_v2() -> Any:
-        return jsonify(service.snapshot().to_dict())
+        return jsonify(service.snapshot().to_v2_dict())
 
     @app.get("/api/v2/schema")
-    def dashboard_schema() -> Any:
+    def dashboard_schema_v2() -> Any:
         schema_path = files("homelab_monitor.schema").joinpath("dashboard-v2.schema.json")
+        return jsonify(json.loads(schema_path.read_text(encoding="utf-8")))
+
+    @app.get("/api/v3/dashboard")
+    def dashboard_v3() -> Any:
+        return jsonify(service.snapshot().to_dict())
+
+    @app.get("/api/v3/schema")
+    def dashboard_schema_v3() -> Any:
+        schema_path = files("homelab_monitor.schema").joinpath("dashboard-v3.schema.json")
         return jsonify(json.loads(schema_path.read_text(encoding="utf-8")))
 
     return app

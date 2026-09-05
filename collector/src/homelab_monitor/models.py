@@ -8,8 +8,9 @@ from enum import StrEnum
 from typing import Any
 
 LEGACY_API_VERSION = "1"
-API_VERSION = "2"
-COLLECTOR_VERSION = "0.3.0"
+COMPAT_API_VERSION = "2"
+API_VERSION = "3"
+COLLECTOR_VERSION = "0.4.0"
 
 
 def utc_timestamp() -> str:
@@ -39,10 +40,57 @@ class ErrorCategory(StrEnum):
     UNEXPECTED = "unexpected"
 
 
+class Severity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class ThresholdDirection(StrEnum):
+    ABOVE = "above"
+    BELOW = "below"
+    CATEGORICAL = "categorical"
+
+
 @dataclass(slots=True)
 class ProviderError:
     category: ErrorCategory
     message: str
+
+
+@dataclass(slots=True)
+class ThresholdDefinition:
+    direction: ThresholdDirection
+    warning: float | None = None
+    critical: float | None = None
+    sustained_samples: int = 1
+
+
+@dataclass(slots=True)
+class Measurement:
+    id: str
+    label: str
+    kind: str
+    status: Status
+    value: float | int | str | bool | None
+    unit: str | None = None
+    detail: str = ""
+    thresholds: ThresholdDefinition | None = None
+    observed_at: str | None = None
+    freshness: Freshness = Freshness.UNKNOWN
+
+
+@dataclass(slots=True)
+class HostMetricsStatus:
+    status: Status = Status.UNKNOWN
+    measurements: list[Measurement] = field(default_factory=list)
+    boot_id: str | None = None
+    error: ProviderError | None = None
+    observed_at: str | None = None
+    last_success_at: str | None = None
+    consecutive_failure_count: int = 0
+    probe_duration_ms: int | None = None
+    freshness: Freshness = Freshness.UNKNOWN
 
 
 @dataclass(slots=True)
@@ -59,6 +107,9 @@ class HostStatus:
     probe_duration_ms: int | None = None
     freshness: Freshness = Freshness.UNKNOWN
     error: ProviderError | None = None
+    certificate_expires_at: str | None = None
+    certificate_days_remaining: int | None = None
+    metrics: HostMetricsStatus | None = None
 
 
 @dataclass(slots=True)
@@ -69,6 +120,16 @@ class ContainerStatus:
     state: str
     status: Status
     detail: str
+    health: str = "none"
+    health_failing_streak: int = 0
+    restart_count: int | None = None
+    restarting: bool = False
+    oom_killed: bool = False
+    exit_code: int | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    recent_exit: bool = False
+    project: str | None = None
 
 
 @dataclass(slots=True)
@@ -80,6 +141,7 @@ class DockerEnvironment:
     stopped: int
     total: int
     containers: list[ContainerStatus] = field(default_factory=list)
+    host_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -126,11 +188,54 @@ class SourceError:
 
 
 @dataclass(slots=True)
+class TimelineEvent:
+    id: int
+    resource_id: str
+    resource_name: str
+    event_type: str
+    severity: Severity
+    message: str
+    occurred_at: str
+    previous_status: Status | None = None
+    current_status: Status | None = None
+    incident_id: int | None = None
+    parent_event_id: int | None = None
+    recovered_at: str | None = None
+
+
+@dataclass(slots=True)
+class TrendPoint:
+    observed_at: str
+    status: Status
+    value: float | int | None = None
+
+
+@dataclass(slots=True)
+class TrendSeries:
+    resource_id: str
+    label: str
+    metric: str
+    unit: str | None = None
+    points: list[TrendPoint] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class FeatureStatus:
+    history_enabled: bool = False
+    history_available: bool = False
+    history_retention_days: int = 0
+    notifications_enabled: bool = False
+
+
+@dataclass(slots=True)
 class Dashboard:
     hosts: list[HostStatus] = field(default_factory=list)
     docker: DockerStatus = field(default_factory=DockerStatus)
     jellyfin: JellyfinStatus = field(default_factory=JellyfinStatus)
     errors: list[SourceError] = field(default_factory=list)
+    recent_events: list[TimelineEvent] = field(default_factory=list)
+    trends: list[TrendSeries] = field(default_factory=list)
+    features: FeatureStatus = field(default_factory=FeatureStatus)
     schema_version: str = API_VERSION
     api_version: str = API_VERSION
     collector_version: str = COLLECTOR_VERSION
@@ -170,9 +275,41 @@ class Dashboard:
         )
         return payload
 
+    def to_v2_dict(self) -> dict[str, Any]:
+        """Return the strict v0.3 response shape for API v2 clients."""
+        payload = self.to_dict()
+        payload["schema_version"] = COMPAT_API_VERSION
+        payload["api_version"] = COMPAT_API_VERSION
+        for field_name in ("recent_events", "trends", "features"):
+            payload.pop(field_name, None)
+        for host in payload["hosts"]:
+            for field_name in (
+                "certificate_expires_at",
+                "certificate_days_remaining",
+                "metrics",
+            ):
+                host.pop(field_name, None)
+        for environment in payload["docker"]["environments"]:
+            environment.pop("host_id", None)
+            for container in environment["containers"]:
+                for field_name in (
+                    "health",
+                    "health_failing_streak",
+                    "restart_count",
+                    "restarting",
+                    "oom_killed",
+                    "exit_code",
+                    "started_at",
+                    "finished_at",
+                    "recent_exit",
+                    "project",
+                ):
+                    container.pop(field_name, None)
+        return payload
+
     def to_v1_dict(self) -> dict[str, Any]:
         """Return the pre-v0.3 response shape for existing v1 clients."""
-        payload = self.to_dict()
+        payload = self.to_v2_dict()
         payload["schema_version"] = LEGACY_API_VERSION
         payload["api_version"] = LEGACY_API_VERSION
         provider_state_fields = {

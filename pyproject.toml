@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "homelab-plasma-monitor"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local collector API for the Home-lab Monitor Plasma widget"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ authors = [{ name = "Michael Biel" }]
 dependencies = [
     "flask>=3.1,<4",
     "httpx>=0.28,<1",
+    "jeepney>=0.9,<1",
     "python-dotenv>=1.1,<2",
     "pyyaml>=6.0,<7",
     "waitress>=3.0,<4",
