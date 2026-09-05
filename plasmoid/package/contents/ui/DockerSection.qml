@@ -15,9 +15,14 @@ ColumnLayout {
     required property var formatAge
     signal expansionRequested(bool value)
 
-    readonly property var environments: root.filteredEnvironments()
+    readonly property int maximumEnvironments: 6
+    readonly property var matchingEnvironments: root.filteredEnvironments()
+    readonly property var environments: root.matchingEnvironments.slice(
+        0,
+        root.maximumEnvironments)
     readonly property int itemCount: root.resourceCount()
     readonly property int issueCount: root.countIssues()
+    readonly property int maximumProjectsPerEnvironment: 6
 
     Layout.fillWidth: true
     spacing: 0
@@ -61,40 +66,88 @@ ColumnLayout {
     function filteredEnvironments() {
         const result = [];
         for (const environment of root.docker.environments) {
-            if (!root.issuesOnly || environment.status !== "healthy") {
+            if (!root.issuesOnly
+                    || environment.status !== "healthy"
+                    || root.environmentContainerIssues(environment) > 0) {
                 result.push(environment);
             }
         }
-        return root.sortResources(result);
-    }
-
-    function filteredContainers(containers) {
-        const result = [];
-        for (const container of containers) {
-            if (!root.issuesOnly || container.status !== "healthy") {
-                result.push(container);
+        result.sort(function(left, right) {
+            if (root.sortMode === "name") {
+                return left.name.localeCompare(right.name);
             }
+            const leftStatus = root.effectiveEnvironmentStatus(left);
+            const rightStatus = root.effectiveEnvironmentStatus(right);
+            const difference = root.statusRank(leftStatus) - root.statusRank(rightStatus);
+            return difference || left.name.localeCompare(right.name);
+        });
+        return result;
+    }
+    function effectiveEnvironmentStatus(environment) {
+        if (root.environmentContainerIssues(environment) === 0) {
+            return environment.status;
         }
-        return root.sortResources(result);
+        return root.statusRank(environment.status) < root.statusRank("degraded")
+            ? environment.status
+            : "degraded";
     }
 
     function resourceCount() {
         let count = root.docker.environments.length;
         for (const environment of root.docker.environments) {
             count += environment.containers.length;
+            count += root.projectsForEnvironment(environment).length;
         }
         return count;
+    }
+    function environmentContainerIssues(environment) {
+        let count = 0;
+        for (const container of environment.containers) {
+            if (container.status !== "healthy") {
+                count++;
+            }
+        }
+        return count;
+    }
+    function projectsForEnvironment(environment) {
+        const groups = {};
+        for (const container of environment.containers) {
+            const name = container.project || i18n("Ungrouped containers");
+            if (!groups[name]) {
+                groups[name] = [];
+            }
+            groups[name].push(container);
+        }
+        const projects = Object.keys(groups).map(function(name) {
+            const containers = groups[name];
+            return {
+                "name": name,
+                "containers": containers,
+                "issues": containers.filter(
+                    container => container.status !== "healthy").length
+            };
+        }).filter(function(project) {
+            return !root.issuesOnly || project.issues > 0;
+        });
+        projects.sort(function(left, right) {
+            if (root.sortMode === "name") {
+                return left.name.localeCompare(right.name);
+            }
+            return right.issues - left.issues || left.name.localeCompare(right.name);
+        });
+        return projects;
+    }
+
+    function visibleProjects(environment) {
+        return root.projectsForEnvironment(environment).slice(
+            0,
+            root.maximumProjectsPerEnvironment);
     }
 
     function countIssues() {
         let count = 0;
         for (const environment of root.docker.environments) {
-            let environmentIssues = 0;
-            for (const container of environment.containers) {
-                if (container.status !== "healthy") {
-                    environmentIssues++;
-                }
-            }
+            const environmentIssues = root.environmentContainerIssues(environment);
             count += environmentIssues > 0
                 ? environmentIssues
                 : (environment.status !== "healthy" ? 1 : 0);
@@ -155,7 +208,7 @@ ColumnLayout {
                 Layout.leftMargin: Kirigami.Units.largeSpacing
                 Layout.rightMargin: Kirigami.Units.smallSpacing
                 name: environmentColumn.modelData.name
-                status: environmentColumn.modelData.status
+                status: root.effectiveEnvironmentStatus(environmentColumn.modelData)
                 detail: i18n("%1 of %2 containers running",
                     environmentColumn.modelData.running,
                     environmentColumn.modelData.total)
@@ -166,19 +219,52 @@ ColumnLayout {
             }
 
             Repeater {
-                model: root.filteredContainers(environmentColumn.modelData.containers)
+                model: root.visibleProjects(environmentColumn.modelData)
 
-                delegate: ResourceRow {
-                    id: containerRow
+                delegate: DockerProjectGroup {
+                    id: projectGroup
 
                     required property var modelData
                     Layout.leftMargin: Kirigami.Units.gridUnit * 2
                     Layout.rightMargin: Kirigami.Units.smallSpacing
-                    name: modelData.name
-                    status: modelData.status
-                    detail: modelData.detail
+                    projectName: modelData.name
+                    containers: modelData.containers
+                    issuesOnly: root.issuesOnly
+                    sortMode: root.sortMode
+                    formatAge: root.formatAge
                 }
             }
+
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.gridUnit * 2
+                Layout.rightMargin: Kirigami.Units.smallSpacing
+                visible: root.projectsForEnvironment(environmentColumn.modelData).length
+                    > root.maximumProjectsPerEnvironment
+                text: i18np(
+                    "%1 additional Docker project hidden",
+                    "%1 additional Docker projects hidden",
+                    root.projectsForEnvironment(environmentColumn.modelData).length
+                        - root.maximumProjectsPerEnvironment)
+                opacity: 0.7
+                font: Kirigami.Theme.smallFont
+                wrapMode: Text.Wrap
+            }
         }
+    }
+
+    PlasmaComponents3.Label {
+        Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.smallSpacing
+        visible: root.expanded
+            && root.matchingEnvironments.length > root.maximumEnvironments
+        text: i18np(
+            "%1 additional Docker environment hidden",
+            "%1 additional Docker environments hidden",
+            root.matchingEnvironments.length - root.maximumEnvironments)
+        opacity: 0.7
+        font: Kirigami.Theme.smallFont
+        wrapMode: Text.Wrap
     }
 }
