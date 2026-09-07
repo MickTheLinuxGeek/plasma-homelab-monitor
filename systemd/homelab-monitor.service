@@ -11,6 +11,8 @@ ExecStart=%h/Dev_Projects/homelab-plasma-monitor/.venv/bin/homelab-monitor --con
 Restart=on-failure
 RestartSec=5
 UMask=0077
+StateDirectory=homelab-monitor
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 

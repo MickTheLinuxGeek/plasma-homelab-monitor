@@ -78,13 +78,59 @@ def test_dependent_event_can_be_correlated_to_a_parent(tmp_path) -> None:
     clock = MutableClock(NOW)
     engine = _engine(store, clock)
     parent = engine.process(_observation(Status.DEGRADED, NOW, "host"))
-    child = engine.process(_observation(Status.DEGRADED, NOW, "container"))
-
-    store.correlate_event(child.event_id, parent.event_id)
+    child = engine.process(
+        Observation(
+            "container",
+            "Container",
+            Status.DEGRADED,
+            NOW,
+            parent_resource_id="host",
+        )
+    )
     events = {event.id: event for event in store.read_model().recent_events}
     store.close()
 
     assert events[child.event_id].parent_event_id == parent.event_id
+
+
+def test_sustained_threshold_requires_configured_consecutive_samples(tmp_path) -> None:
+    store = HistoryStore(tmp_path / "history.sqlite3")
+    clock = MutableClock(NOW)
+    engine = _engine(store, clock)
+
+    for offset in range(2):
+        result = engine.process(
+            Observation(
+                "cpu",
+                "CPU",
+                Status.DEGRADED,
+                NOW + timedelta(minutes=offset),
+                metric="cpu_used_percent",
+                value=90,
+                unit="%",
+                sustained_samples=3,
+            )
+        )
+        assert result.event_id is None
+
+    result = engine.process(
+        Observation(
+            "cpu",
+            "CPU",
+            Status.DEGRADED,
+            NOW + timedelta(minutes=2),
+            metric="cpu_used_percent",
+            value=91,
+            unit="%",
+            sustained_samples=3,
+        )
+    )
+    events = store.read_model().recent_events
+    store.close()
+
+    assert result.event_id is not None
+    assert len(events) == 1
+    assert events[0].current_status == Status.DEGRADED
 
 
 def test_minimum_severity_filters_degraded_but_not_critical(tmp_path) -> None:

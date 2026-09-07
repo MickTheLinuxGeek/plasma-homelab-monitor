@@ -152,6 +152,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     config.setdefault("retry_base_seconds", 2)
     config.setdefault("retry_max_seconds", 30)
     config.setdefault("freshness_grace_seconds", 5)
+    config.setdefault("event_correlation_window_seconds", 120)
     config.setdefault("hosts", [])
     history = _require_mapping(config.get("history"), "history")
     history.setdefault("enabled", True)
@@ -214,6 +215,8 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     quiet_hours["timezone"] = timezone
     notifications["quiet_hours"] = quiet_hours
     config["notifications"] = notifications
+    if notifications["enabled"] and not history["enabled"]:
+        raise ConfigError("notifications.enabled requires history.enabled")
 
     for setting in (
         "request_timeout_seconds",
@@ -221,6 +224,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
         "retry_base_seconds",
         "retry_max_seconds",
         "freshness_grace_seconds",
+        "event_correlation_window_seconds",
     ):
         config[setting] = _positive_number(config[setting], setting)
     try:

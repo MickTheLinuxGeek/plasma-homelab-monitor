@@ -135,9 +135,7 @@ def test_phase_three_views_are_bounded_actionable_and_accessible() -> None:
 
 def test_widget_explains_collector_owned_notification_and_history_state() -> None:
     config_qml = (PACKAGE / "contents/ui/ConfigGeneral.qml").read_text(encoding="utf-8")
-    diagnostics_qml = (PACKAGE / "contents/ui/DiagnosticsSection.qml").read_text(
-        encoding="utf-8"
-    )
+    diagnostics_qml = (PACKAGE / "contents/ui/DiagnosticsSection.qml").read_text(encoding="utf-8")
 
     assert "Notification policy and incident history are owned by the collector" in config_qml
     assert "features.history_enabled" in diagnostics_qml

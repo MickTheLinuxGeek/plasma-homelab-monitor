@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from threading import Event
 from time import monotonic, sleep
 
@@ -50,7 +51,12 @@ def _wait_for(predicate, timeout: float = 1.0) -> None:
 def test_migration_is_versioned_and_history_survives_restart(tmp_path) -> None:
     path = tmp_path / "state" / "history.sqlite3"
     store = HistoryStore(path)
-    assert store.schema_version() == 1
+    assert store.schema_version() == 2
+    assert store._connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert store._connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    assert store._connection.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    assert Path(f"{path}-wal").stat().st_mode & 0o777 == 0o600
+    assert Path(f"{path}-shm").stat().st_mode & 0o777 == 0o600
     store.record_observation(_observation("nas", Status.HEALTHY, value=4))
     store.close()
 
@@ -60,6 +66,51 @@ def test_migration_is_versioned_and_history_survives_restart(tmp_path) -> None:
 
     assert model.trends[0].resource_id == "nas"
     assert model.trends[0].points[0].value == 4
+    assert path.parent.stat().st_mode & 0o777 == 0o700
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_boot_baseline_is_silent_and_later_change_creates_one_event(tmp_path) -> None:
+    path = tmp_path / "history.sqlite3"
+    first = HistoryStore(path)
+    baseline = history.BootObservation("nas", "NAS", "boot-1", NOW)
+
+    assert first.record_boot_observation(baseline) is None
+    assert first.record_boot_observation(baseline) is None
+    first.close()
+
+    reopened = HistoryStore(path)
+    event_id = reopened.record_boot_observation(
+        history.BootObservation("nas", "NAS", "boot-2", NOW + timedelta(minutes=1))
+    )
+    model = reopened.read_model()
+    reopened.close()
+
+    assert event_id is not None
+    assert len(model.recent_events) == 1
+    assert model.recent_events[0].event_type == "reboot"
+    assert model.recent_events[0].severity == "warning"
+
+
+def test_existing_schema_v1_is_transactionally_upgraded_to_v2(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "history.sqlite3"
+    migrations = history._MIGRATIONS
+    monkeypatch.setattr(history, "_MIGRATIONS", migrations[:1])
+    version_one = HistoryStore(path)
+    assert version_one.schema_version() == 1
+    version_one.close()
+
+    monkeypatch.setattr(history, "_MIGRATIONS", migrations)
+    upgraded = HistoryStore(path)
+    tables = {
+        row[0]
+        for row in upgraded._connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert upgraded.schema_version() == 2
+    assert "boot_state" in tables
+    upgraded.close()
 
 
 def test_history_limits_are_constructed_from_validated_config() -> None:
@@ -79,7 +130,7 @@ def test_history_limits_are_constructed_from_validated_config() -> None:
 
 
 def test_failed_migration_rolls_back_all_schema_changes(tmp_path, monkeypatch) -> None:
-    migrations = history._MIGRATIONS + ((2, ("THIS IS NOT SQL",)),)
+    migrations = history._MIGRATIONS + ((3, ("THIS IS NOT SQL",)),)
     monkeypatch.setattr(history, "_MIGRATIONS", migrations)
     path = tmp_path / "history.sqlite3"
 

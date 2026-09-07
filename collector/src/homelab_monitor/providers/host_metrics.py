@@ -328,6 +328,7 @@ def normalize_host_metrics(
                 "smart:unknown",
                 "SMART health",
                 "smart_health",
+                threshold=ThresholdDefinition(direction=ThresholdDirection.CATEGORICAL),
                 observed_at=observed_at,
             )
         )
@@ -409,6 +410,7 @@ def normalize_host_metrics(
                 status=Status.UNKNOWN,
                 value=boot_id,
                 detail="A persisted baseline is required before reboot status can be evaluated.",
+                thresholds=ThresholdDefinition(direction=ThresholdDirection.CATEGORICAL),
                 observed_at=observed_at,
                 freshness=Freshness.FRESH,
             )
@@ -419,6 +421,7 @@ def normalize_host_metrics(
                 "system:boot_id",
                 "Boot identity",
                 "boot_id",
+                threshold=ThresholdDefinition(direction=ThresholdDirection.CATEGORICAL),
                 observed_at=observed_at,
             )
         )

@@ -46,15 +46,17 @@ class IncidentEngine:
         *,
         policy: TransitionPolicy | None = None,
         clock: Clock | None = None,
+        correlation_window: timedelta = timedelta(minutes=2),
     ) -> None:
         self.store = store
         self.policy = policy or TransitionPolicy()
         self.clock = clock or UtcClock()
+        self.correlation_window = correlation_window
 
     def process(self, observation: Observation) -> TransitionResult:
         severity = self.severity_for_status(observation.status)
         grace = self.grace_for_status(observation.status)
-        return self.store.record_transition(
+        result = self.store.record_transition(
             observation,
             severity=severity,
             grace=grace,
@@ -64,6 +66,14 @@ class IncidentEngine:
             recovery_messages=self.policy.recovery_messages,
             now=self.clock.now(),
         )
+        if result.event_id is not None and observation.parent_resource_id:
+            self.store.correlate_with_latest_parent(
+                result.event_id,
+                observation.parent_resource_id,
+                observation.observed_at,
+                self.correlation_window,
+            )
+        return result
 
     __call__ = process
 

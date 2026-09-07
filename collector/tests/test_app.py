@@ -38,6 +38,12 @@ def test_demo_dashboard_v2_contract(demo_config: dict[str, Any]) -> None:
     assert payload["docker"]["freshness"] == "fresh"
     assert payload["docker"]["consecutive_failure_count"] == 0
     assert payload["docker"]["probe_duration_ms"] == 1
+    assert "metrics" not in payload["hosts"][0]
+    assert "host_id" not in payload["docker"]["environments"][0]
+    assert "project" not in payload["docker"]["environments"][0]["containers"][0]
+    assert "recent_events" not in payload
+    assert "trends" not in payload
+    assert "features" not in payload
 
 
 def test_demo_dashboard_v3_contract(demo_config: dict[str, Any]) -> None:
@@ -49,9 +55,12 @@ def test_demo_dashboard_v3_contract(demo_config: dict[str, Any]) -> None:
     assert payload["schema_version"] == "3"
     assert payload["api_version"] == "3"
     assert payload["collector_version"] == "0.4.0"
-    assert payload["recent_events"] == []
-    assert payload["trends"] == []
-    assert payload["features"]["history_enabled"] is False
+    assert payload["recent_events"][0]["event_type"] == "threshold_breached"
+    assert payload["trends"][0]["metric"] == "disk_used_percent"
+    assert payload["features"]["history_enabled"] is True
+    assert payload["hosts"][0]["metrics"]["measurements"][0]["id"] == "disk_used_percent"
+    assert payload["docker"]["environments"][0]["host_id"] == "dxp2800"
+    assert payload["docker"]["environments"][0]["containers"][1]["recent_exit"] is True
     assert not list(validator.iter_errors(payload))
 
 

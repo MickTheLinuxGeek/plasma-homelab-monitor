@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import sqlite3
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -87,12 +88,30 @@ class Observation:
     metric: str = "status"
     value: float | int | None = None
     unit: str | None = None
+    sustained_samples: int = 1
+    parent_resource_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.resource_id:
             raise ValueError("resource_id must not be empty")
         if not self.metric:
             raise ValueError("metric must not be empty")
+        if self.sustained_samples < 1:
+            raise ValueError("sustained_samples must be positive")
+        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
+            raise ValueError("observed_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class BootObservation:
+    host_id: str
+    host_name: str
+    boot_id: str
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.host_id or not self.boot_id:
+            raise ValueError("host_id and boot_id must not be empty")
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
 
@@ -218,6 +237,19 @@ _MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
             """,
         ),
     ),
+    (
+        2,
+        (
+            """
+            CREATE TABLE boot_state (
+                host_id TEXT PRIMARY KEY,
+                host_name TEXT NOT NULL,
+                boot_id TEXT NOT NULL,
+                observed_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 
@@ -243,18 +275,25 @@ class HistoryStore:
         self.limits = limits or HistoryLimits()
         self._lock = Lock()
         if self.path != ":memory:":
-            Path(self.path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+            parent = Path(self.path).expanduser().resolve().parent
+            parent_existed = parent.exists()
+            parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if not parent_existed or parent.name == "homelab-monitor":
+                parent.chmod(0o700)
         try:
             self._connection = sqlite3.connect(
                 self.path,
                 isolation_level=None,
                 check_same_thread=False,
             )
+            if self.path != ":memory:":
+                os.chmod(self.path, 0o600)
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
             self._connection.execute("PRAGMA journal_mode = WAL")
             self._migrate()
+            self._secure_database_files()
             self.cancel_interrupted_deliveries()
         except HistoryMigrationError:
             self._connection.close()
@@ -263,6 +302,14 @@ class HistoryStore:
             if hasattr(self, "_connection"):
                 self._connection.close()
             raise HistoryMigrationError(f"Unable to initialize history database: {exc}") from exc
+
+    def _secure_database_files(self) -> None:
+        if self.path == ":memory:":
+            return
+        for suffix in ("", "-wal", "-shm"):
+            database_file = Path(f"{self.path}{suffix}")
+            if database_file.exists():
+                database_file.chmod(0o600)
 
     def _migrate(self) -> None:
         try:
@@ -367,6 +414,27 @@ class HistoryStore:
                     ),
                 )
                 observation_id = int(observation_cursor.lastrowid)
+                if observation.sustained_samples > 1 and observation.status in {
+                    Status.DEGRADED,
+                    Status.UNAVAILABLE,
+                }:
+                    recent = self._connection.execute(
+                        """
+                        SELECT status FROM observations
+                        WHERE resource_id = ? AND metric = ?
+                        ORDER BY observed_at DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (
+                            observation.resource_id,
+                            observation.metric,
+                            observation.sustained_samples,
+                        ),
+                    ).fetchall()
+                    if len(recent) < observation.sustained_samples or any(
+                        Status(row["status"]) != observation.status for row in recent
+                    ):
+                        observation = replace(observation, status=Status.HEALTHY)
                 previous = self._connection.execute(
                     "SELECT * FROM resource_state WHERE resource_id = ?",
                     (observation.resource_id,),
@@ -586,6 +654,70 @@ class HistoryStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def record_boot_observation(self, observation: BootObservation) -> int | None:
+        """Persist a boot baseline and emit one reboot event only after it changes."""
+        observed_at = _timestamp(observation.observed_at)
+        with self._lock:
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                previous = self._connection.execute(
+                    "SELECT boot_id FROM boot_state WHERE host_id = ?",
+                    (observation.host_id,),
+                ).fetchone()
+                if previous is None:
+                    self._connection.execute(
+                        """
+                        INSERT INTO boot_state(host_id, host_name, boot_id, observed_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            observation.host_id,
+                            observation.host_name,
+                            observation.boot_id,
+                            observed_at,
+                        ),
+                    )
+                    self._connection.execute("COMMIT")
+                    return None
+                self._connection.execute(
+                    """
+                    UPDATE boot_state
+                    SET host_name = ?, boot_id = ?, observed_at = ?
+                    WHERE host_id = ?
+                    """,
+                    (
+                        observation.host_name,
+                        observation.boot_id,
+                        observed_at,
+                        observation.host_id,
+                    ),
+                )
+                if previous["boot_id"] == observation.boot_id:
+                    self._connection.execute("COMMIT")
+                    return None
+                cursor = self._connection.execute(
+                    """
+                    INSERT INTO events(
+                        resource_id, resource_name, event_type, severity, message,
+                        occurred_at, previous_status, current_status, recovered_at
+                    ) VALUES (?, ?, 'reboot', ?, ?, ?, NULL, NULL, ?)
+                    """,
+                    (
+                        f"host:{observation.host_id}:boot",
+                        observation.host_name,
+                        Severity.WARNING.value,
+                        f"{observation.host_name} rebooted.",
+                        observed_at,
+                        observed_at,
+                    ),
+                )
+                self._connection.execute("COMMIT")
+                return int(cursor.lastrowid)
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def _insert_event(
         self,
         observation: Observation,
@@ -633,6 +765,36 @@ class HistoryStore:
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"unknown event id: {event_id}")
+
+    def correlate_with_latest_parent(
+        self,
+        event_id: int,
+        parent_resource_id: str,
+        occurred_at: datetime,
+        window: timedelta,
+    ) -> bool:
+        """Attach the nearest explicit parent failure inside the correlation window."""
+        lower = _timestamp(occurred_at - window)
+        upper = _timestamp(occurred_at + window)
+        with self._lock:
+            parent = self._connection.execute(
+                """
+                SELECT id FROM events
+                WHERE resource_id = ?
+                    AND event_type = 'failure'
+                    AND occurred_at BETWEEN ? AND ?
+                ORDER BY ABS(julianday(occurred_at) - julianday(?)), id DESC
+                LIMIT 1
+                """,
+                (parent_resource_id, lower, upper, _timestamp(occurred_at)),
+            ).fetchone()
+            if parent is None:
+                return False
+            cursor = self._connection.execute(
+                "UPDATE events SET parent_event_id = ? WHERE id = ?",
+                (int(parent["id"]), event_id),
+            )
+            return cursor.rowcount == 1
 
     def _cooldown_end(
         self,
@@ -942,7 +1104,7 @@ class CachedHistory:
 
 
 class ObservationHandler(Protocol):
-    def __call__(self, observation: Observation) -> object:
+    def __call__(self, observation: Observation | BootObservation) -> object:
         """Persist or evaluate one observation."""
 
 
@@ -962,8 +1124,8 @@ class HistoryCoordinator:
             raise ValueError("queue_size and maintenance_every must be positive")
         self.store = store
         self.cache = CachedHistory()
-        self._handler = handler or store.record_observation
-        self._queue: queue.Queue[Observation] = queue.Queue(maxsize=queue_size)
+        self._handler = handler or self._record
+        self._queue: queue.Queue[Observation | BootObservation] = queue.Queue(maxsize=queue_size)
         self._clock = clock or UtcClock()
         self._maintenance_every = maintenance_every
         self._stop_event = Event()
@@ -973,6 +1135,11 @@ class HistoryCoordinator:
         self._processed = 0
         self._dropped = 0
         self._failed = 0
+
+    def _record(self, observation: Observation | BootObservation) -> object:
+        if isinstance(observation, BootObservation):
+            return self.store.record_boot_observation(observation)
+        return self.store.record_observation(observation)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -991,7 +1158,7 @@ class HistoryCoordinator:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout)
 
-    def submit(self, observation: Observation) -> bool:
+    def submit(self, observation: Observation | BootObservation) -> bool:
         try:
             self._queue.put_nowait(observation)
         except queue.Full:
@@ -1028,7 +1195,12 @@ class HistoryCoordinator:
                 with self._statistics_lock:
                     self._processed += 1
             except Exception:
-                logger.exception("History processing failed for %s", observation.resource_id)
+                resource_id = (
+                    observation.resource_id
+                    if isinstance(observation, Observation)
+                    else f"host:{observation.host_id}:boot"
+                )
+                logger.exception("History processing failed for %s", resource_id)
                 with self._statistics_lock:
                     self._failed += 1
             finally:

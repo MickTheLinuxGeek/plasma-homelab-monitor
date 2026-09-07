@@ -104,6 +104,7 @@ def test_missing_optional_metrics_are_explicitly_unknown() -> None:
     assert len(result.measurements) == 7
     assert all(item.status == Status.UNKNOWN for item in result.measurements)
     assert all(item.freshness == Freshness.UNKNOWN for item in result.measurements)
+    assert all(item.thresholds is not None for item in result.measurements)
 
 
 @pytest.mark.parametrize(
