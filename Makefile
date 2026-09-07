@@ -24,6 +24,7 @@ format:
 check: lint test
 	python3 -m json.tool $(PACKAGE_DIR)/metadata.json >/dev/null
 	python3 -m json.tool collector/src/homelab_monitor/schema/dashboard-v2.schema.json >/dev/null
+	python3 -m json.tool collector/src/homelab_monitor/schema/dashboard-v3.schema.json >/dev/null
 	python3 -c 'from xml.etree import ElementTree; ElementTree.parse("$(PACKAGE_DIR)/contents/config/main.xml")'
 
 install-widget:

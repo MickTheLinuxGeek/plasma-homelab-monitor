@@ -5,7 +5,17 @@ from threading import Event, Lock
 from time import monotonic, sleep
 
 import httpx
-from homelab_monitor.models import Freshness, HostStatus, Status
+from homelab_monitor.contracts import NotificationMessage
+from homelab_monitor.history import HistoryStore
+from homelab_monitor.models import (
+    Freshness,
+    HostMetricsStatus,
+    HostStatus,
+    Measurement,
+    Status,
+    ThresholdDefinition,
+    ThresholdDirection,
+)
 from homelab_monitor.service import DashboardService
 
 
@@ -166,3 +176,149 @@ def test_retry_delay_is_exponential_and_bounded() -> None:
     assert service.retry_delay(60, 1) == 0.01
     assert service.retry_delay(60, 2) == 0.02
     assert service.retry_delay(60, 20) == 0.02
+
+
+def _enable_history(config: dict, path, *, notifications: bool = False) -> None:
+    config["history"] = {
+        "enabled": True,
+        "path": str(path),
+        "retention_days": 30,
+        "max_observations_per_resource": 100,
+        "max_total_observations": 1000,
+        "recent_event_limit": 20,
+        "trend_point_limit": 30,
+        "queue_size": 64,
+    }
+    config["notifications"] = {
+        "enabled": notifications,
+        "minimum_severity": "warning",
+        "degraded_grace_seconds": 0,
+        "unavailable_grace_seconds": 0,
+        "cooldown_seconds": 0,
+        "recovery_messages": True,
+        "queue_size": 16,
+        "retry_limit": 2,
+        "quiet_hours": {
+            "enabled": False,
+            "start": "22:00",
+            "end": "07:00",
+            "timezone": "UTC",
+        },
+    }
+
+
+def test_metrics_failure_is_attached_without_marking_host_unavailable() -> None:
+    config = _config(["nas"], interval=0.02)
+    config["hosts"][0]["metrics"] = {
+        "enabled": True,
+        "poll_interval_seconds": 0.02,
+        "timeout_seconds": 0.1,
+    }
+    calls = 0
+
+    def metrics() -> HostMetricsStatus:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise httpx.ReadTimeout("metrics unavailable")
+        return HostMetricsStatus(
+            status=Status.DEGRADED,
+            boot_id="boot-1",
+            measurements=[
+                Measurement(
+                    id="cpu:used_percent",
+                    label="CPU",
+                    kind="cpu_used_percent",
+                    status=Status.DEGRADED,
+                    value=90,
+                    unit="%",
+                    thresholds=ThresholdDefinition(
+                        direction=ThresholdDirection.ABOVE,
+                        warning=85,
+                        critical=95,
+                        sustained_samples=3,
+                    ),
+                    freshness=Freshness.FRESH,
+                )
+            ],
+        )
+
+    service = DashboardService(
+        config,
+        {
+            "host:nas": lambda: _healthy("nas"),
+            "metrics:nas": metrics,
+        },
+    )
+    service.start()
+    _wait_for(lambda: service.snapshot().hosts[0].metrics is not None)
+    _wait_for(lambda: service.snapshot().hosts[0].metrics.error is not None)
+    snapshot = service.snapshot()
+    service.stop()
+
+    assert snapshot.hosts[0].status == Status.HEALTHY
+    assert snapshot.hosts[0].metrics.status == Status.UNAVAILABLE
+    assert snapshot.hosts[0].metrics.freshness == Freshness.STALE
+    assert snapshot.hosts[0].metrics.measurements[0].freshness == Freshness.STALE
+    assert any(error.source == "metrics:nas" for error in snapshot.errors)
+
+
+def test_service_persists_history_and_serves_cached_events(tmp_path) -> None:
+    config = _config(["nas"], interval=0.02)
+    path = tmp_path / "history.sqlite3"
+    _enable_history(config, path)
+    calls = 0
+
+    def changing_probe() -> HostStatus:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _healthy("nas")
+        raise httpx.ConnectError("offline")
+
+    service = DashboardService(config, {"host:nas": changing_probe})
+    service.start()
+    _wait_for(lambda: bool(service.snapshot().recent_events))
+    snapshot = service.snapshot()
+    service.stop()
+
+    assert snapshot.features.history_enabled is True
+    assert snapshot.features.history_available is True
+    assert snapshot.recent_events[0].resource_id == "host:nas"
+    assert snapshot.recent_events[0].current_status == Status.UNAVAILABLE
+    assert snapshot.trends[0].metric == "latency_ms"
+
+    reopened = HistoryStore(path)
+    assert reopened.schema_version() == 2
+    assert reopened.read_model().recent_events
+    reopened.close()
+
+
+def test_service_dispatches_each_incident_notification_once(tmp_path) -> None:
+    class CaptureSink:
+        def __init__(self) -> None:
+            self.messages: list[NotificationMessage] = []
+
+        def send(self, message: NotificationMessage) -> None:
+            self.messages.append(message)
+
+    config = _config(["nas"], interval=0.02)
+    path = tmp_path / "history.sqlite3"
+    _enable_history(config, path, notifications=True)
+    sink = CaptureSink()
+
+    def unavailable() -> HostStatus:
+        raise httpx.ConnectError("offline")
+
+    service = DashboardService(
+        config,
+        {"host:nas": unavailable},
+        notification_sink=sink,
+    )
+    service.start()
+    _wait_for(lambda: len(sink.messages) == 1)
+    sleep(0.08)
+    service.stop()
+
+    assert len(sink.messages) == 1
+    assert sink.messages[0].severity == "critical"

@@ -229,7 +229,16 @@ Kirigami.FormLayout {
     QQC2.Label {
         Kirigami.FormData.label: i18n("Security:")
         Layout.maximumWidth: Kirigami.Units.gridUnit * 20
-        text: i18n("The widget only receives normalized status data. Keep Portainer and Jellyfin tokens in the collector environment.")
+        text: i18n("The widget only receives normalized status data. Keep Portainer, Jellyfin, and host metrics tokens in the collector environment.")
         wrapMode: Text.WordWrap
+    }
+
+    QQC2.Label {
+        Kirigami.FormData.label: i18n("Notifications and history:")
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 20
+        text: i18n("Notification policy and incident history are owned by the collector. Configure them in config.yaml; current enabled and availability state is reported in widget Diagnostics.")
+        wrapMode: Text.WordWrap
+        Accessible.name: i18n("Collector-owned notifications and history")
+        Accessible.description: text
     }
 }

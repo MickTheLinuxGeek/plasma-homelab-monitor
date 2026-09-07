@@ -3,10 +3,12 @@
 A Plasma 6 panel widget backed by a small local Flask collector. It provides a compact, read-only view of:
 
 - NAS and host reachability through HTTP or TCP probes
+- Optional host metrics, certificate expiry, and reboot signals
 - Docker environments and containers through Portainer
 - Jellyfin server status and active playback sessions
+- A retained incident timeline, bounded trends, and opt-in Plasma notifications
 
-The widget never stores infrastructure credentials. Portainer and Jellyfin tokens remain in the collector's environment, and the widget receives only normalized status data.
+The widget never stores infrastructure credentials. Portainer, Jellyfin, and host metrics tokens remain in the collector's environment, and the widget receives only normalized status data.
 
 ## Project layout
 
@@ -24,16 +26,17 @@ make config
 make run
 ```
 
+
 The example configuration starts in demo mode. In another terminal:
 
 ```bash
-curl http://127.0.0.1:8765/api/v2/dashboard
+curl http://127.0.0.1:8765/api/v3/dashboard
 make preview
 ```
 
 The widget defaults to `http://127.0.0.1:8765` and refreshes every 30 seconds. Both values can be changed from the widget's settings. Provider probes run independently in the collector; dashboard HTTP requests return the latest cached snapshot immediately.
 
-The current contract is available at `/api/v2/dashboard`, with its JSON Schema at `/api/v2/schema`. `/api/v1/dashboard` remains available for v0.2 widget compatibility.
+The current contract is available at `/api/v3/dashboard`, with its JSON Schema at `/api/v3/schema`. `/api/v1/dashboard` and `/api/v2/dashboard` remain available for older widget compatibility.
 
 ## Configure live integrations
 
@@ -74,7 +77,64 @@ hosts:
       port: 22
 ```
 
-These probes report availability and latency. They intentionally do not claim to provide CPU, disk, temperature, or SMART metrics; those require a future metrics adapter.
+Reachability remains independent from optional host metrics. A metrics endpoint failure can make metrics stale or unavailable without falsely reporting that the host itself is unreachable. Configure only verified HTTPS endpoints, and keep bearer tokens in `.env` through `api_key_env`.
+
+Each HTTP probe also reports certificate expiry when the TLS peer exposes a certificate. The default warning and critical thresholds are 30 and 7 days.
+
+### Host metrics endpoint
+
+The optional endpoint must return a strict version 1 JSON object. Unknown fields are rejected; only `schema_version` and a timezone-aware `observed_at` timestamp are required. Omitted metric categories appear as unknown rather than healthy.
+
+```json
+{
+  "schema_version": "1",
+  "observed_at": "2026-09-05T18:00:00Z",
+  "boot_id": "8a9f4c1e",
+  "disks": [
+    {"id": "data", "label": "Data array", "used_percent": 61.4}
+  ],
+  "temperatures": [
+    {"id": "cpu", "label": "CPU package", "celsius": 42.0}
+  ],
+  "smart": [
+    {"id": "nvme0", "label": "System NVMe", "status": "passed"}
+  ],
+  "backups": [
+    {
+      "id": "restic",
+      "label": "Restic",
+      "last_success_at": "2026-09-05T03:00:00Z"
+    }
+  ],
+  "cpu": {"used_percent": 38.2},
+  "memory": {"used_percent": 57.1}
+}
+```
+
+Disk and percentage values must be finite numbers from 0 through 100. Temperatures accept finite Celsius values. SMART status is `passed`, `failed`, or `unknown`; backup timestamps must be timezone-aware and not in the future. `boot_id` is baseline-only on first observation and creates a reboot event only when a later value differs. CPU and memory incident transitions require their configured consecutive sample count.
+
+### History and notifications
+
+The collector stores bounded observations, events, and trends in SQLite by default. The database defaults to `~/.local/state/homelab-monitor/history.sqlite3`; retention and row caps are configurable under `history`.
+
+Collector-owned Plasma notifications are disabled by default. To opt in:
+
+```yaml
+notifications:
+  enabled: true
+  minimum_severity: warning
+  degraded_grace_seconds: 60
+  unavailable_grace_seconds: 90
+  cooldown_seconds: 900
+  recovery_messages: true
+  quiet_hours:
+    enabled: true
+    start: "22:00"
+    end: "07:00"
+    timezone: local
+```
+
+Notifications are sent over the logged-in Plasma session's D-Bus. Grace periods, cooldowns, quiet hours, and recovery messages are evaluated by the collector, so the widget does not need to remain open.
 
 ### Portainer
 
@@ -93,9 +153,15 @@ portainer:
   api_key_env: PORTAINER_API_KEY
   verify_tls: true
   endpoint_ids: []
+  max_inspections_per_poll: 20
+  inspect_baseline_interval_seconds: 300
+  endpoint_host_map:
+    "1": dxp2800
 ```
 
-An empty `endpoint_ids` list includes all environments visible to the token. The adapter only performs `GET` requests.
+An empty `endpoint_ids` list includes all environments visible to the token. The adapter only performs `GET` requests. Container inspection is prioritized for unhealthy or restarting containers and bounded per poll; periodic baseline inspections catch restart, OOM, and recent-exit signals without inspecting the entire fleet on every refresh.
+
+Set `endpoint_host_map` only for explicit, known dependencies. A mapped host failure can explain affected services in the timeline without turning correlation into an inferred dependency.
 
 ### Jellyfin
 
@@ -113,7 +179,10 @@ jellyfin:
   url: https://jellyfin.home.arpa
   api_key_env: JELLYFIN_API_KEY
   verify_tls: true
+  host_id: jellyfin
 ```
+
+`host_id` is optional and must reference a configured host. It records an explicit dependency for event correlation.
 
 ## Install the widget
 
@@ -147,7 +216,7 @@ Inspect logs with:
 journalctl --user -u homelab-monitor.service -f
 ```
 
-The supplied service assumes the project remains at `~/Dev_Projects/homelab-plasma-monitor`.
+The supplied service assumes the project remains at `~/Dev_Projects/homelab-plasma-monitor` and provisions `~/.local/state/homelab-monitor` with mode `0700` for the history database.
 
 ## Development checks
 

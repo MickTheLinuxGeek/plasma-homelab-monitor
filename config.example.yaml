@@ -5,6 +5,33 @@ max_concurrent_probes: 4
 retry_base_seconds: 2
 retry_max_seconds: 30
 freshness_grace_seconds: 5
+event_correlation_window_seconds: 120
+history:
+  enabled: true
+  # Defaults to ~/.local/state/homelab-monitor/history.sqlite3.
+  # path: ~/.local/state/homelab-monitor/history.sqlite3
+  retention_days: 30
+  max_observations_per_resource: 1440
+  max_total_observations: 50000
+  recent_event_limit: 20
+  trend_point_limit: 30
+  queue_size: 512
+
+notifications:
+  # Collector-owned Plasma notifications are opt-in.
+  enabled: false
+  minimum_severity: warning
+  degraded_grace_seconds: 60
+  unavailable_grace_seconds: 90
+  cooldown_seconds: 900
+  recovery_messages: true
+  queue_size: 64
+  retry_limit: 3
+  quiet_hours:
+    enabled: false
+    start: "22:00"
+    end: "07:00"
+    timezone: local
 
 hosts:
   - id: dxp2800
@@ -18,6 +45,36 @@ hosts:
       verify_tls: true
       # Use the PEM for the issuing CA, not an individual server certificate.
       # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
+    certificate_thresholds:
+      direction: below
+      warning: 30
+      critical: 7
+    metrics:
+      enabled: false
+      url: https://metrics.example.test/v1/metrics
+      api_key_env: HOST_METRICS_API_KEY
+      verify_tls: true
+      # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
+      poll_interval_seconds: 60
+      timeout_seconds: 3
+      thresholds:
+        disk_used_percent:
+          warning: 80
+          critical: 90
+        temperature_c:
+          warning: 70
+          critical: 85
+        backup_age_hours:
+          warning: 24
+          critical: 48
+        cpu_used_percent:
+          warning: 85
+          critical: 95
+          sustained_samples: 3
+        memory_used_percent:
+          warning: 85
+          critical: 95
+          sustained_samples: 3
   - id: dxp4800p
     name: DXP4800 Plus
     dashboard_url: https://forgejo.example.test
@@ -40,8 +97,16 @@ portainer:
   # ca_bundle: ~/.config/homelab-monitor/home-lab-ca.pem
   poll_interval_seconds: 30
   timeout_seconds: 3
+  # host_id: jellyfin
   # Leave empty to include every environment visible to the API token.
   endpoint_ids: []
+  max_inspections_per_poll: 20
+  inspect_baseline_interval_seconds: 300
+  restart_warning_count: 3
+  restart_critical_count: 10
+  recent_exit_window_seconds: 3600
+  # Map an endpoint to a configured host only when the dependency is known.
+  endpoint_host_map: {}
 
 jellyfin:
   enabled: false

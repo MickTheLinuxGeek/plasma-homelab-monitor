@@ -48,6 +48,45 @@ ColumnLayout {
         text: i18n("Data age: %1", root.dataAge)
         wrapMode: Text.Wrap
     }
+    PlasmaComponents3.Label {
+        Layout.fillWidth: true
+        visible: !!root.dashboard
+        text: {
+            if (!root.dashboard) {
+                return "";
+            }
+            const features = root.dashboard.features;
+            if (!features.history_enabled) {
+                return i18n("Collector history: disabled");
+            }
+            if (!features.history_available) {
+                return i18n("Collector history: enabled but unavailable");
+            }
+            return i18np(
+                "Collector history: available · %1-day retention",
+                "Collector history: available · %1-day retention",
+                features.history_retention_days);
+        }
+        wrapMode: Text.Wrap
+    }
+
+    PlasmaComponents3.Label {
+        Layout.fillWidth: true
+        visible: !!root.dashboard
+        text: root.dashboard && root.dashboard.features.notifications_enabled
+            ? i18n("Collector notifications: enabled")
+            : i18n("Collector notifications: disabled")
+        wrapMode: Text.Wrap
+    }
+
+    PlasmaComponents3.Label {
+        Layout.fillWidth: true
+        visible: !!root.dashboard
+        text: i18n("Notification policy and incident history are owned by the collector.")
+        opacity: 0.75
+        font: Kirigami.Theme.smallFont
+        wrapMode: Text.Wrap
+    }
 
     PlasmaComponents3.Label {
         Layout.fillWidth: true

@@ -12,8 +12,8 @@ def test_health_endpoint(demo_config: dict[str, Any]) -> None:
     assert response.status_code == 200
     assert response.get_json() == {
         "status": "ok",
-        "api_version": "2",
-        "collector_version": "0.3.0",
+        "api_version": "3",
+        "collector_version": "0.4.0",
     }
 
 
@@ -26,7 +26,7 @@ def test_demo_dashboard_v2_contract(demo_config: dict[str, Any]) -> None:
     assert response.status_code == 200
     assert payload["schema_version"] == "2"
     assert payload["api_version"] == "2"
-    assert payload["collector_version"] == "0.3.0"
+    assert payload["collector_version"] == "0.4.0"
     assert payload["generated_at"]
     assert payload["last_successful_observation_at"]
     assert payload["overall_status"] == "degraded"
@@ -38,6 +38,30 @@ def test_demo_dashboard_v2_contract(demo_config: dict[str, Any]) -> None:
     assert payload["docker"]["freshness"] == "fresh"
     assert payload["docker"]["consecutive_failure_count"] == 0
     assert payload["docker"]["probe_duration_ms"] == 1
+    assert "metrics" not in payload["hosts"][0]
+    assert "host_id" not in payload["docker"]["environments"][0]
+    assert "project" not in payload["docker"]["environments"][0]["containers"][0]
+    assert "recent_events" not in payload
+    assert "trends" not in payload
+    assert "features" not in payload
+
+
+def test_demo_dashboard_v3_contract(demo_config: dict[str, Any]) -> None:
+    client = create_app(config=demo_config).test_client()
+    schema = client.get("/api/v3/schema").get_json()
+    payload = client.get("/api/v3/dashboard").get_json()
+    validator = Draft202012Validator(schema)
+
+    assert payload["schema_version"] == "3"
+    assert payload["api_version"] == "3"
+    assert payload["collector_version"] == "0.4.0"
+    assert payload["recent_events"][0]["event_type"] == "threshold_breached"
+    assert payload["trends"][0]["metric"] == "disk_used_percent"
+    assert payload["features"]["history_enabled"] is True
+    assert payload["hosts"][0]["metrics"]["measurements"][0]["id"] == "disk_used_percent"
+    assert payload["docker"]["environments"][0]["host_id"] == "dxp2800"
+    assert payload["docker"]["environments"][0]["containers"][1]["recent_exit"] is True
+    assert not list(validator.iter_errors(payload))
 
 
 def test_v1_dashboard_remains_compatible(demo_config: dict[str, Any]) -> None:
@@ -48,6 +72,7 @@ def test_v1_dashboard_remains_compatible(demo_config: dict[str, Any]) -> None:
     assert isinstance(payload["docker"]["error"], str | type(None))
     assert "freshness" not in payload["docker"]
     assert "error" not in payload["hosts"][0]
+    assert "recent_events" not in payload
 
 
 def test_published_schema_accepts_dashboard_and_rejects_missing_provider_state(
