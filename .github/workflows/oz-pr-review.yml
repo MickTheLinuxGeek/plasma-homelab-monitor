@@ -1,0 +1,49 @@
+name: Oz PR review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: oz-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Review pull request with Oz
+        uses: warpdotdev/oz-agent-action@v1
+        with:
+          warp_api_key: ${{ secrets.WARP_API_KEY }}
+          skill: code-review
+          prompt: |
+            Review this pull request against its base branch.
+
+            Inspect the complete diff and post only actionable findings as
+            inline review comments. Do not modify files, commit changes, merge
+            the pull request, or approve it.
+
+            Focus on:
+            - correctness, regressions, and error handling
+            - security, TLS validation, and secret handling
+            - API v1/v2/v3 compatibility and schema contracts
+            - provider isolation, stale-data semantics, and service lifecycle
+            - SQLite migrations, retention, notification deduplication, and
+              graceful shutdown
+            - QML accessibility, keyboard navigation, and runtime behavior
+            - test coverage, systemd hardening, packaging, and documentation
+
+            Use the repository's existing conventions and tests. Ignore
+            generated files unless they introduce a correctness or security
+            problem.
