@@ -225,6 +225,12 @@ make format
 make check
 ```
 
+## Automated pull request reviews
+
+GitHub Actions runs an Oz code review when a pull request is opened, marked
+ready for review, or updated. Configure the repository's `WARP_API_KEY`
+Actions secret to enable the workflow in `.github/workflows/oz-pr-review.yml`.
+
 ## Local certificate trust
 
 Fedora command-line tools may trust home-lab certificates installed in the system CA store while Python HTTPX uses a different trust store. Configure `ca_bundle` for each HTTPS host probe or provider that uses a private CA:

@@ -26,7 +26,6 @@ jobs:
         uses: warpdotdev/oz-agent-action@v1
         with:
           warp_api_key: ${{ secrets.WARP_API_KEY }}
-          skill: code-review
           prompt: |
             Review this pull request against its base branch.
 
